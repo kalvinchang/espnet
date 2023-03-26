@@ -30,7 +30,7 @@ tts_conf:                        # keyword arguments for the selected model
     use_batch_norm: true         # whether to use batch normalization in encoder
     use_concate: true            # whether to concatenate encoder embedding with decoder outputs
     use_residual: false          # whether to use residual connection in encoder
-    spk_embed_dim: 512              # dimension of speaker embedding
+    spk_embed_dim: 192              # dimension of speaker embedding
     spk_embed_integration_type: add # how to integrate speaker embedding
     use_gst: true                # whether to use GST embedding
     gst_heads: 4                 # number of heads in GST multi-head attention
