@@ -22,6 +22,7 @@ g2p_choices = [
     "pyopenjtalk_prosody",
     "pypinyin_g2p",
     "pypinyin_g2p_phone",
+    "g2pw_pypinyin_phone",
     "pypinyin_g2p_phone_without_prosody",
     "espeak_ng_arabic",
     "espeak_ng_german",
@@ -515,6 +516,8 @@ class PhonemeTokenizer(AbsTokenizer):
             self.g2p = pypinyin_g2p
         elif g2p_type == "pypinyin_g2p_phone":
             self.g2p = pypinyin_g2p_phone
+        elif g2p_type == "g2pw_pypinyin_phone":
+            self.g2p = g2pw_pypinyin_phone
         elif g2p_type == "pypinyin_g2p_phone_without_prosody":
             self.g2p = pypinyin_g2p_phone_without_prosody
         elif g2p_type == "espeak_ng_arabic":
