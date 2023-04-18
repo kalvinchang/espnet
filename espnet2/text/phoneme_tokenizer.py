@@ -211,6 +211,61 @@ def pypinyin_g2p_phone(text) -> List[str]:
     ]
     return phones
 
+def g2pw_pypinyin_phone(text) -> List[str]:
+    from pypinyin.style._utils import get_finals, get_initials
+
+    text_pinyin = g2pw_pinyin(text)
+    phones = [
+        p 
+        for pinyin in text_pinyin
+        for p in [
+          get_initials([pinyin][0], strict=True),
+          get_finals([pinyin][0][:-1], strict=True) + [pinyin][0][-1]
+          if [pinyin][0][-1].isdigit()
+          else get_finals([pinyin][0], strict=True)
+          if [pinyin][0][-1].isalnum()
+          else [pinyin][0],
+        ]
+        if len(p) != 0 and not p.isdigit()
+    ]
+    return phones
+
+def g2pw_zhuyin(text):
+    from g2pw import G2PWConverter
+    import regex
+
+    conv = G2PWConverter()
+    r = regex.compile(r"(\p{P}+)")
+    PUNC = [chr(i) for i in range(sys.maxunicode) if category(chr(i)).startswith("P")]
+
+    text = ''.join(text.split())
+    split_text = r.split(text) # splits punctuation into their own string
+    zhuyin = []
+    for s in split_text:
+      if any(c in PUNC for c in s):
+          zhuyin.append(s)
+      elif len(s) > 0:
+          zhuyin.extend(conv(s)[0])
+
+    return zhuyin
+
+def g2pw_pinyin(text):
+    from pyzhuyin import zhuyin_to_pinyin
+    import sys
+    from unicodedata import category
+
+    PUNC = [chr(i) for i in range(sys.maxunicode) if category(chr(i)).startswith("P")]
+
+    text_zhuyin = g2pw_zhuyin(text)
+
+    pinyin = []
+    for zhuyin in text_zhuyin:
+      if any(c in PUNC for c in zhuyin):
+          pinyin.append(zhuyin)
+      else:
+          pinyin.append(zhuyin_to_pinyin(zhuyin[:-1])[:-1] + zhuyin[-1])
+
+    return pinyin
 
 def pypinyin_g2p_phone_without_prosody(text) -> List[str]:
     from pypinyin import Style, pinyin
