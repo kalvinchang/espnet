@@ -234,6 +234,8 @@ def g2pw_pypinyin_phone(text) -> List[str]:
 def g2pw_zhuyin(text):
     from g2pw import G2PWConverter
     import regex
+    import sys
+    from unicodedata import category
 
     conv = G2PWConverter()
     r = regex.compile(r"(\p{P}+)")
