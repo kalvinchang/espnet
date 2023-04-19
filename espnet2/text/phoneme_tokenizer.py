@@ -238,8 +238,9 @@ def g2pw_zhuyin(text):
     from unicodedata import category
 
     conv = G2PWConverter()
-    r = regex.compile(r"(\p{P}+)")
+    r = regex.compile(r"(\p{P}+)")    
     PUNC = [chr(i) for i in range(sys.maxunicode) if category(chr(i)).startswith("P")]
+
 
     text = ''.join(text.split())
     split_text = r.split(text) # splits punctuation into their own string
