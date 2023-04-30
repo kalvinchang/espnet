@@ -234,40 +234,35 @@ def g2pw_pypinyin_phone(text) -> List[str]:
 def g2pw_zhuyin(text):
     from g2pw import G2PWConverter
     import regex
-    import sys
-    from unicodedata import category
 
     conv = G2PWConverter()
-    r = regex.compile(r"(\p{P}+)")    
-    PUNC = [chr(i) for i in range(sys.maxunicode) if category(chr(i)).startswith("P")]
-
+    r = regex.compile(r"([\u4e00-\u9fff]+)")    
 
     text = ''.join(text.split())
     split_text = r.split(text) # splits punctuation into their own string
     zhuyin = []
     for s in split_text:
-      if any(c in PUNC for c in s):
-          zhuyin.append(s)
-      elif len(s) > 0:
-          zhuyin.extend(conv(s)[0])
+      if len(s) > 0:
+          if r.search(s):
+              zhuyin.extend(conv(s)[0])
+          else:
+              zhuyin.append(s)
 
     return zhuyin
 
 def g2pw_pinyin(text):
     from pyzhuyin import zhuyin_to_pinyin
-    import sys
-    from unicodedata import category
 
-    PUNC = [chr(i) for i in range(sys.maxunicode) if category(chr(i)).startswith("P")]
+    r = regex.compile(r"([\u3100-\u312f]+)")
 
     text_zhuyin = g2pw_zhuyin(text)
 
     pinyin = []
     for zhuyin in text_zhuyin:
-      if any(c in PUNC for c in zhuyin):
-          pinyin.append(zhuyin)
-      else:
+      if r.search(zhuyin):
           pinyin.append(zhuyin_to_pinyin(zhuyin[:-1])[:-1] + zhuyin[-1])
+      else:
+          pinyin.append(zhuyin)
 
     return pinyin
 
