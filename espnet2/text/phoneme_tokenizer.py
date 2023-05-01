@@ -261,7 +261,8 @@ def g2pw_pinyin(text):
     pinyin = []
     for zhuyin in text_zhuyin:
       if r.search(zhuyin):
-          pinyin.append(zhuyin_to_pinyin(zhuyin[:-1])[:-1] + zhuyin[-1])
+          tone = zhuyin[-1] if zhuyin[-1] != "5" else ""
+          pinyin.append(zhuyin_to_pinyin(zhuyin[:-1])[:-1] + tone)
       else:
           pinyin.append(zhuyin)
 
