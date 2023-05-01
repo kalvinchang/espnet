@@ -252,6 +252,7 @@ def g2pw_zhuyin(text):
 
 def g2pw_pinyin(text):
     from pyzhuyin import zhuyin_to_pinyin
+    import regex
 
     r = regex.compile(r"([\u3100-\u312f]+)")
 
