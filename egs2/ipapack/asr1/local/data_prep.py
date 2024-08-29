@@ -60,7 +60,13 @@ if __name__ == "__main__":
     args.target_dir.mkdir(parents=True, exist_ok=True)
 
     rows = []
-    for path in tqdm(args.source_dir.glob("*.tar")):
+
+    # TODO: glob is non-deterministic -> sort after globbing
+    for i, path in tqdm(enumerate(args.source_dir.glob("*.tar"))):
+        # TODO: skip the ones that are COMPLETE
+        if i < 229:
+            continue
+        
         split = path.stem
         original_dataset = get_dataset_name(path)
 
