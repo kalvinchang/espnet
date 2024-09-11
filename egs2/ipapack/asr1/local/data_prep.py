@@ -69,12 +69,9 @@ if __name__ == "__main__":
 
     ipa_tokenizer = read_ipa()
 
-    # TODO: glob is non-deterministic -> sort after globbing
-    for i, path in tqdm(enumerate(args.source_dir.glob("*.tar"))):
-        # TODO: skip the ones that are COMPLETE
-        if i < 229:
-            continue
-        
+    rows = []
+    # glob is non-deterministic -> sort after globbing
+    for i, path in tqdm(enumerate(sorted(args.source_dir.glob("*.tar")))):
         split = path.stem
         original_dataset = get_dataset_name(path)
 
