@@ -5,11 +5,14 @@ from pathlib import Path
 import webdataset as wds
 from scipy.io import wavfile
 import pandas as pd
+from tarfile import ReadError
+from phonepiece.ipa import read_ipa
 
 # TODO: remove
 from tqdm import tqdm
 
-# adapted from https://github.com/juice500ml/espnet/blob/wav2gloss/egs2/wav2gloss/asr1/local/data_prep.py
+# adapted from https://github.com/juice500ml/espnet/blob/wav2gloss/egs2/
+#       wav2gloss/asr1/local/data_prep.py
 
 
 def get_parser():
@@ -30,10 +33,15 @@ def get_parser():
     )
     return parser
 
-def normalize_text():
-    # TODO: remove spaces and re-introduce spaces
-    # TODO: phoneme tokenizer
-    pass
+
+def normalize_text(ipa, ipa_tokenizer):
+    # remove whitespace
+    ipa = "".join(ipa.split())
+    # phone(me) tokenizer (phonepiece)
+    ipa_tokens = ipa_tokenizer.tokenize(ipa)
+    # re-introduce spaces (like TIMIT)
+    return " ".join(ipa_tokens)
+
 
 def get_dataset_name(tar_path):
     # get original dataset name
@@ -59,7 +67,7 @@ if __name__ == "__main__":
     print("making directory", args.target_dir)
     args.target_dir.mkdir(parents=True, exist_ok=True)
 
-    rows = []
+    ipa_tokenizer = read_ipa()
 
     # TODO: glob is non-deterministic -> sort after globbing
     for i, path in tqdm(enumerate(args.source_dir.glob("*.tar"))):
