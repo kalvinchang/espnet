@@ -83,6 +83,7 @@ if __name__ == "__main__":
 
     parser = get_parser()
     args = parser.parse_args()
+    min_wav_length = args.min_wav_length
 
     for dataset in ['mswc', 'fleurs', 'doreco']:
         print("making directory", args.source_dir.joinpath(dataset))
@@ -114,14 +115,20 @@ if __name__ == "__main__":
                     continue
                 wavfile.write(new_path, SAMPLING_RATE, audio)
                 ipa = normalize_text(ipa, ipa_tokenizer)
-                rows.append((utt_id, original_dataset, new_path, ipa))
+                rows.append((utt_id, split, original_dataset, new_path, ipa))
         except ReadError as e:
             print('failed to untar', path, e)
         print('\nfinished', path)
 
-    df = pd.DataFrame(rows)
-    df.to_csv(args.source_dir.joinpath(f'{args.source_dir}/transcript.csv'), index=False,
-        headers=['utt_id', 'dataset', 'path', 'ipa'])
+    df = pd.DataFrame(rows, columns=['utt_id', 'orig_split', 'dataset',
+                                     'path', 'ipa'])
+    # train/dev/test splits
+    df['split'] = df.apply(lambda row: generate_train_dev_test_splits(
+                            row['dataset'], row['orig_split'], row['utt_id'],
+                            doreco_splits), axis=1)
+    df = df.drop(columns=['orig_split'])
+    df.to_csv(args.source_dir.joinpath(f'{args.source_dir}/transcript.csv'),
+              index=False)
     
 
     # TODO: kaldi format
