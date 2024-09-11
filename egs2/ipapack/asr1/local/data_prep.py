@@ -39,6 +39,24 @@ def get_parser():
     return parser
 
 
+def generate_train_dev_test_splits(original_dataset, split, utt_id,
+                                   doreco_splits):
+    # DoReCo: language code (ex: ana1239)
+        # use their splits (Table 11) - train/test
+        # they use glottocode https://doreco.huma-num.fr/languages
+    # MSWC: split + batch? (ex: mswc-dev-000001)
+        # use their splits
+    # FLEURS: language code + split (ex: af_za-test)
+    if original_dataset == 'doreco':
+        # 0148_DoReCo_doreco_anal1239_anm_20152111_Ngahring_PO_56_283.wav
+        return (doreco_splits[doreco_splits['glottocode_or_prefix'] == split]
+                .iloc[0]['split'])
+    elif original_dataset == 'mswc':
+        return split.split('-')[1]
+    elif original_dataset == 'fleurs':
+        return split.split('-')[1]
+
+
 def normalize_text(ipa, ipa_tokenizer):
     # remove whitespace
     ipa = "".join(ipa.split())
