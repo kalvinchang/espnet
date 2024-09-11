@@ -57,6 +57,39 @@ def generate_train_dev_test_splits(original_dataset, split, utt_id,
         return split.split('-')[1]
 
 
+
+def write_dir(source_dir, target_dir, transcripts):
+    wavscp = open(target_dir / "wav.scp", "w", encoding="utf-8")
+    text = open(target_dir / "text", "w", encoding="utf-8")
+    utt2spk = open(target_dir / "utt2spk", "w", encoding="utf-8")
+    utt_id_mapping = open(source_dir / "uttid_map", "w", encoding="utf-8")
+
+    count = 0
+    for _, row in transcripts.iterrows():
+        utt_id, path, ipa, orig_split = (row['utt_id'], row['path'],
+                                             row['ipa'],
+                                             row['orig_split'])
+
+        # generate a new utterance id
+        new_utt_id = f"aaaaa_{dataset}_{orig_split}_{count:020d}"
+        # map original utt_id to nnew_utt_id
+        utt_id_mapping.write(f"{utt_id} {new_utt_id}\n")
+
+        wavscp.write(f"{new_utt_id} {path}\n")
+        text.write(f"{new_utt_id} {ipa}\n")
+        # ESPnet does not use speaker info for ASR anymore
+        utt2spk.write(f"{new_utt_id} aaaaa\n")
+
+        count += 1
+
+    wavscp.close()
+    text.close()
+    utt2spk.close()
+    utt_id_mapping.close()
+
+    print(f"{target_dir}: {count} lines written.")
+
+
 def normalize_text(ipa, ipa_tokenizer):
     # remove whitespace
     ipa = "".join(ipa.split())
@@ -92,6 +125,7 @@ if __name__ == "__main__":
     args.target_dir.mkdir(parents=True, exist_ok=True)
 
     ipa_tokenizer = read_ipa()
+    doreco_splits = pd.read_csv('local/doreco_splits.csv')
 
     rows = []
     # glob is non-deterministic -> sort after globbing
@@ -117,6 +151,7 @@ if __name__ == "__main__":
                 ipa = normalize_text(ipa, ipa_tokenizer)
                 rows.append((utt_id, split, original_dataset, new_path, ipa))
         except ReadError as e:
+            # currently, only yuca1254 has problems
             print('failed to untar', path, e)
         print('\nfinished', path)
 
@@ -126,10 +161,11 @@ if __name__ == "__main__":
     df['split'] = df.apply(lambda row: generate_train_dev_test_splits(
                             row['dataset'], row['orig_split'], row['utt_id'],
                             doreco_splits), axis=1)
-    df = df.drop(columns=['orig_split'])
-    df.to_csv(args.source_dir.joinpath(f'{args.source_dir}/transcript.csv'),
+    df.to_csv(args.source_dir / 'transcript.csv',
               index=False)
-    
 
-    # TODO: kaldi format
-    
+    # kaldi format
+    for split, split_df in df.groupby('split'):
+        split_dir = args.target_dir / split
+        split_dir.mkdir(parents=True, exist_ok=True)
+        write_dir(args.source_dir, split_dir, split_df)
