@@ -31,6 +31,11 @@ def get_parser():
         default=Path("data"),
         required=True
     )
+    parser.add_argument(
+        "--min_wav_length",
+        type=float,
+        default=0.5,
+    )
     return parser
 
 
@@ -79,18 +84,27 @@ if __name__ == "__main__":
         ds = wds.WebDataset(path).decode()
         ds = ds.to_tuple("__key__", "__url__", "npy", "__local_path__", "txt")
 
-        for utt_id, _, audio, _, ipa in ds:
-            new_path = (f'{args.source_dir}/{original_dataset}/'
-                        f'{split}/{utt_id}.wav')
-            Path(new_path).parent.mkdir(parents=True, exist_ok=True)
-            # audio is just samples. SAMPLING_RATE determines how many samples per sec.
-            wavfile.write(new_path, SAMPLING_RATE, audio)
-            # TODO: remove the path
+        try:
+            for utt_id, _, audio, _, ipa in ds:
+                new_path = (f'{args.source_dir}/{original_dataset}/'
+                            f'{split}/{utt_id}.wav')
+                Path(new_path).parent.mkdir(parents=True, exist_ok=True)
+                # audio is just a list of samples.
+                # SAMPLING_RATE determines how many samples per sec.
+                # enforce min_wav_length
+                if len(audio) / SAMPLING_RATE < min_wav_length:
+                    continue
+                wavfile.write(new_path, SAMPLING_RATE, audio)
+                ipa = normalize_text(ipa, ipa_tokenizer)
+                rows.append((utt_id, original_dataset, new_path, ipa))
+        except ReadError as e:
+            print('failed to untar', path, e)
+        print('\nfinished', path)
 
-            rows.append((utt_id, original_dataset, new_path, ipa))
-
-        print('finished', path)
+    df = pd.DataFrame(rows)
+    df.to_csv(args.source_dir.joinpath(f'{args.source_dir}/transcript.csv'), index=False,
+        headers=['utt_id', 'dataset', 'path', 'ipa'])
     
-    pd.DataFrame(rows).to_csv(args.source_dir.joinpath('transcript.csv'), index=False)
 
     # TODO: kaldi format
+    
