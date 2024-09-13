@@ -137,26 +137,34 @@ if __name__ == "__main__":
         ds = wds.WebDataset(path).decode()
         ds = ds.to_tuple("__key__", "__url__", "npy", "__local_path__", "txt")
 
+        split_rows = []
         try:
             for utt_id, _, audio, _, ipa in ds:
                 new_path = (f'{args.source_dir}/{original_dataset}/'
                             f'{split}/{utt_id}.wav')
                 Path(new_path).parent.mkdir(parents=True, exist_ok=True)
+
                 # audio is just a list of samples.
                 # SAMPLING_RATE determines how many samples per sec.
                 # enforce min_wav_length
                 if len(audio) / SAMPLING_RATE < min_wav_length:
                     continue
                 wavfile.write(new_path, SAMPLING_RATE, audio)
+
                 ipa = normalize_text(ipa, ipa_tokenizer)
-                rows.append((utt_id, split, original_dataset, new_path, ipa))
+                split_rows.append((utt_id, split, original_dataset, new_path, ipa))
         except ReadError as e:
             # currently, only yuca1254 has problems
             print('failed to untar', path, e)
+            # do not add any rows related to this language
+            continue
         print('\nfinished', path)
+        rows += split_rows
 
     df = pd.DataFrame(rows, columns=['utt_id', 'orig_split', 'dataset',
                                      'path', 'ipa'])
+    df.to_csv(args.source_dir / 'transcript.csv',
+              index=False)
     # train/dev/test splits
     df['split'] = df.apply(lambda row: generate_train_dev_test_splits(
                             row['dataset'], row['orig_split'], row['utt_id'],
