@@ -55,6 +55,7 @@ CSJVER=dvd  ## Set your CSJ format (dvd or usb).
             ## Case merl :MERL setup. Necessary directory is WAV and sdb
 CSMSC=downloads
 CSS10=
+DURAZNOS_MIXTEC=downloads
 DIHARD2= # Path to dihard2/second_dihard_challenge_dev-eleven_srcs/data/multichannel/sad directory
 HKUST1=
 HKUST2=
