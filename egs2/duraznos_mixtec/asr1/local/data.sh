@@ -33,6 +33,17 @@ if [ -z "${DURAZNOS_MIXTEC}" ]; then
     exit 1
 fi
 
+if [ -z "${URL}" ]; then
+    log "Fill the value of 'URL' of local/data.sh"
+    exit 1
+fi
+
+if [ -z "${DATASET_ROOT}" ]; then
+    log "Fill the value of 'DATASET_ROOT' of local/data.sh"
+    exit 1
+fi
+
+
 # Set bash to 'debug' mode, it will exit on :
 # -e 'error', -u 'undefined variable', -o ... 'error in pipeline', -x 'print commands',
 set -e
