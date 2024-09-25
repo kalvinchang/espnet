@@ -11,8 +11,16 @@ def create_dataset():
 
 
 if __name__ == "__main__":
+    DUMP_DIR = "./dump/libri100"
+
+    LIBRI_100_DIRS = [
+        ["/hdd/database/librispeech-100/LibriSpeech/train-clean-100", "train"],
+        ["/hdd/database/librispeech-100/LibriSpeech/dev-clean", "dev-clean"],
+        ["/hdd/database/librispeech-100/LibriSpeech/dev-other", "dev-other"],
+    ]
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(device)
+    print("device:", device)
 
     wavs, sampling_rate = sf.read('downloads/fleurs/af_za-train/1_8887709998161918393.wav') # sampling rate should be 16000
     wav_lengths = torch.LongTensor([len(wav) for wav in [wavs]]).to(device)
