@@ -26,14 +26,15 @@ class XEUSFeatureReader(BaseFeatureReader):
         # take the output of the last layer -> batch_size x seq_len x hdim
         with torch.no_grad():
             x, x_lens = self.preprocess_data(data, data_lens)
-            wavs = wavs.to(self.device)
+            wavs = x.to(self.device)
             # TODO: allow linear combo of layers??
             feats = model.encode(wavs, data_lens, use_mask=False, use_final_output=False)[0][self.layer]
-            # ex: [1, 1097, 1024] for 20 s file
+            # ex: [1, 1097, 1024] for 1 file that's 20 s
 
-            # TODO: figure out feature lengths
-            feats_lens = 
-        return feats.cpu(), feats_lens.cpu()
+            # based on https://github.com/pytorch/audio/blob/ba696ea3dfec4cbe693bf06a84c75dc196077f5b/src/torchaudio/models/wav2vec2/model.py#L85
+                # just return the length of the original data
+                # the # frames of each item pre-padding
+        return feats.cpu(), x_lens
 
 
 def get_parser():
@@ -41,20 +42,10 @@ def get_parser():
     parser.add_argument(
         "--feature_type", type=str, default="mfcc", choices=["mfcc", "hubert", "s3prl"]
     )
-    parser.add_argument("--hubert-model-url", type=str, default=None)
-    parser.add_argument("--hubert-model-path", type=str, default=None)
-    parser.add_argument("--s3prl-upstream-name", type=str, default=None)
     parser.add_argument("--layer", type=int, default=None)
     parser.add_argument("--sample_rate", type=int, default=16000)
     parser.add_argument("--max_chunk", type=int, default=1600000)
-    parser.add_argument("--seed", default=0, type=int)
-    parser.add_argument(
-        "--hubert_type",
-        type=str,
-        default="espnet",
-        choices=["espnet", "fairseq"],
-        help="Whether the HuBERT encoder implementation is based on espnet or fairseq.",
-    )
+    parser.add_argument("--seed", default=15213, type=int)
     parser.add_argument(
         "--in_filetype",
         type=str,
@@ -85,8 +76,6 @@ def get_parser():
 
 
 if __name__ == "__main__":
-    exit()
-
     checkpoint_path='/ocean/projects/cis210027p/kchang1/XEUS/model/xeus_checkpoint.pth'
     reader = XEUSFeatureReader(
                 checkpoint_path=checkpoint_path,
