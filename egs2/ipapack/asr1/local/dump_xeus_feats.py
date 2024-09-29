@@ -35,7 +35,7 @@ class XEUSFeatureReader(BaseFeatureReader):
             wavs = x.to(self.device)
             # TODO: allow linear combo of layers??
             # source: https://www.wavlab.org/activities/2024/xeus/
-            feats = model.encode(wavs, data_lens, use_mask=False, use_final_output=False)[0][self.layer]
+            feats = self.model.encode(wavs, data_lens, use_mask=False, use_final_output=False)[0][self.layer]
             # ex: [1, 1097, 1024] for 1 file that's 20 s
 
             # based on https://github.com/pytorch/audio/blob/ba696ea3dfec4cbe693bf06a84c75dc196077f5b/src/torchaudio/models/wav2vec2/model.py#L85
@@ -113,4 +113,5 @@ if __name__ == "__main__":
         wspecifier=args.wspecifier,
         utt2num_samples=args.utt2num_samples,
         write_num_frames=args.write_num_frames,
+        batch_bins=22500000
     )
