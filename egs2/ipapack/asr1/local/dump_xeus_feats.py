@@ -1,6 +1,12 @@
-from pyscripts.feats.ssl_feature_utils import BaseFeatureReader, dump_feature
+import argparse
+import logging
+from typing import List, Optional, Tuple, Union
 
 import torch
+import numpy as np
+
+from espnet2.tasks.ssl import SSLTask
+from pyscripts.feats.ssl_feature_utils import BaseFeatureReader, dump_feature
 
 
 # adapted from https://github.com/simpleoier/ESPnet_SSL_ASR_tutorial_misc/blob/main/dump_feats.py
@@ -28,6 +34,7 @@ class XEUSFeatureReader(BaseFeatureReader):
             x, x_lens = self.preprocess_data(data, data_lens)
             wavs = x.to(self.device)
             # TODO: allow linear combo of layers??
+            # source: https://www.wavlab.org/activities/2024/xeus/
             feats = model.encode(wavs, data_lens, use_mask=False, use_final_output=False)[0][self.layer]
             # ex: [1, 1097, 1024] for 1 file that's 20 s
 
@@ -66,6 +73,9 @@ def get_parser():
         "--write_num_frames", type=str, help="Specify wspecifer for utt2num_frames"
     )
     parser.add_argument(
+        "--utt2num_samples", type=str, help="Path to utt2num_samples file"
+    )
+    parser.add_argument(
         "rspecifier", type=str, help="Read specifier for feats. e.g. ark:some.ark"
     )
     parser.add_argument(
@@ -101,5 +111,6 @@ if __name__ == "__main__":
         rspecifier=args.rspecifier,
         out_filetype=args.out_filetype,
         wspecifier=args.wspecifier,
+        utt2num_samples=args.utt2num_samples,
         write_num_frames=args.write_num_frames,
     )

@@ -16,7 +16,7 @@ log() {
 train_set=train
 dev_set=dev
 test_sets=test
-datadir=dump/raw/org
+datadir=dump/raw
 feat_dir=dump_feats
 use_gpu=true
 feature_type=xeus
@@ -24,7 +24,7 @@ suffix=""
 
 layer=-1
 
-nj=32
+nj=1
 python=python3       # Specify python to execute espnet commands.
 
 log "$0 $*"
@@ -74,6 +74,7 @@ for dset in "${train_set}" "${dev_set}" ${test_sets}; do
             --out_filetype "mat" \
             --layer "${layer}" \
             --write_num_frames "ark,t:${_logdir}/utt2num_frames.JOB" \
+            --utt2num_samples "${datadir}/${dset}/utt2num_samples" \
             "scp:${_logdir}/wav.JOB.scp" \
             "ark,scp:${output_dir}/feats.JOB.ark,${output_dir}/feats.JOB.scp" || exit 1;
 
