@@ -98,4 +98,7 @@ for dset in "${train_set}" "${dev_set}" ${test_sets}; do
     done > ${output_dir}/../utt2num_frames || exit 1
     rm ${_logdir}/utt2num_frames.*
 
+
+    # copy the feats.scp to data/*
+    cp ${output_dir}/../feats.scp "data/${dset}"
 done
