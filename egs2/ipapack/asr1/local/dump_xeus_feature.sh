@@ -22,7 +22,7 @@ use_gpu=true
 feature_type=xeus
 suffix=""
 
-layer=-1
+layer=-2
 
 nj=1
 python=python3       # Specify python to execute espnet commands.
@@ -67,6 +67,16 @@ for dset in "${train_set}" "${dev_set}" ${test_sets}; do
     # shellcheck disable=SC2086
     utils/split_scp.pl "${key_file}" ${split_scps}
 
+    # also split utt2num_samples by JOB
+    key_file="${datadir}/${dset}"/utt2num_samples
+    split_utt2num_samples=""
+    for n in $(seq ${_nj}); do
+        split_utt2num_samples+=" ${_logdir}/utt2num_samples.${n}"
+    done
+    # shellcheck disable=SC2086
+    utils/split_scp.pl "${key_file}" ${split_utt2num_samples}
+
+
     # shellcheck disableSC2046,SC2086
     ${_cmd} --gpu "${_ngpu}" JOB=1:"${_nj}" "${_logdir}"/dump_feats.JOB.log \
         ${python} local/dump_xeus_feats.py \
@@ -74,7 +84,7 @@ for dset in "${train_set}" "${dev_set}" ${test_sets}; do
             --out_filetype "mat" \
             --layer "${layer}" \
             --write_num_frames "ark,t:${_logdir}/utt2num_frames.JOB" \
-            --utt2num_samples "${datadir}/${dset}/utt2num_samples" \
+            --utt2num_samples "${_logdir}/utt2num_samples.JOB" \
             "scp:${_logdir}/wav.JOB.scp" \
             "ark,scp:${output_dir}/feats.JOB.ark,${output_dir}/feats.JOB.scp" || exit 1;
 
