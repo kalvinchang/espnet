@@ -16,6 +16,8 @@ encoder_conf:
     attention_dropout_rate: 0.1
     input_layer: conv2d2
     normalize_before: true
+	interctc_layer_idx: [11]
+	interctc_use_conditioning: false
 
 decoder: null
 
@@ -24,6 +26,35 @@ model_conf:
     lsm_weight: 0.1
     length_normalized_loss: false
     extract_feats_in_collect_stats: false
+	interctc_weight: 0.25
+	aux_ctc:
+		'10':
+		 - syl
+		 - son
+		 - cons
+		 - cont
+		 - delrel
+		 - lat
+		 - nas
+		 - strid
+		 - voi
+		 - sg
+		 - cg
+		 - ant
+		 - cor
+		 - distr
+		 - lab
+		 - hi
+		 - lo
+		 - back
+		 - round
+		 - velaric
+		 - tense
+		 - long
+
+		
+
+aux_ctc_tasks: ["syl", "son", "cons", "cont", "delrel", "lat", "nas", "strid", "voi", "sg", "cg", "ant", "cor", "distr", "lab", "hi", "lo", "back", "round", "velaric", "tense", "long"]
 
 
 seed: 2022
