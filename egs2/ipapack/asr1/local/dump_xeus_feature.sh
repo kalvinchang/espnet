@@ -16,15 +16,14 @@ log() {
 train_set=train
 dev_set=dev
 test_sets=test
-datadir=dump/raw
+datadir=dump/raw/org
 feat_dir=dump_feats
 use_gpu=true
 feature_type=xeus
 suffix=""
 
 layer=-2
-
-nj=1
+nj=32
 python=python3       # Specify python to execute espnet commands.
 
 log "$0 $*"
@@ -42,7 +41,7 @@ fi
 
 if ${use_gpu}; then
     _cmd="${cuda_cmd}"
-    _ngpu=4
+    _ngpu=1
 else
     _cmd="${train_cmd}"
     _ngpu=0
@@ -85,6 +84,7 @@ for dset in "${train_set}" "${dev_set}" ${test_sets}; do
             --layer "${layer}" \
             --write_num_frames "ark,t:${_logdir}/utt2num_frames.JOB" \
             --utt2num_samples "${_logdir}/utt2num_samples.JOB" \
+            --batch_bins 5000000 \
             "scp:${_logdir}/wav.JOB.scp" \
             "ark,scp:${output_dir}/feats.JOB.ark,${output_dir}/feats.JOB.scp" || exit 1;
 
