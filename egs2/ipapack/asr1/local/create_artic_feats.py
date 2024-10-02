@@ -1,5 +1,7 @@
 import argparse
+
 from panphon import FeatureTable
+from tqdm import tqdm
 
 
 if __name__ == "__main__":
@@ -24,8 +26,9 @@ if __name__ == "__main__":
 
         oov_phonemes = set()
 
+        print("generating articulatory features")
         artic_feat_lists = { feat:[] for feat in artic_feats }
-        for utt in utts:
+        for utt in tqdm(utts):
             utt_split = utt.split()
             utt_id = utt_split[0]
             phonemes = utt_split[1:]
@@ -36,25 +39,24 @@ if __name__ == "__main__":
                 fts = ft.word_fts(phoneme)
                 if len(fts) == 0:
                     oov_phonemes.add(fts)
-                assert len(fts) == 1
-                # TODO: remove
+                    continue
 
                 segment = fts[0]
-                assert len(artic_feats) == len(segment.strings()) # TODO: remove
                 for feature, value in zip(artic_feats, segment.strings()):
                     utt_featlist[feature].append(value)
 
             # use a list instead of map in case utt_id is not alphabetical
             for feat in artic_feats:
-                artic_feat_lists[feat].append((utt_id, utt_featlist[feat]))
+                artic_feat_files[feat].write(f"{utt_id} {' '.join(utt_featlist[feat])}\n")
+
 
         # write in batches to make it less I/O intensive
-        for feat in artic_feats:
+        print("writing")
+        for feat in tqdm(artic_feats):
             writer = artic_feat_files[feat]
-            for utt_id, feat_list in artic_feat_lists[feat]:
-                writer.write(f"{utt_id} {' '.join(artic_feat_lists)}\n")
-
             writer.close()
 
-        print(len(oov_phonemes), "OOV phonemes not covered by panphon:")
-        print("\n".join(oov_phonemes))
+        if len(oov_phonemes) > 0:
+            print(len(oov_phonemes), "OOV phonemes not covered by panphon:")
+            print("\n".join(oov_phonemes))
+            raise Exception("OOV phoneme. Please fix in preprocessing")
