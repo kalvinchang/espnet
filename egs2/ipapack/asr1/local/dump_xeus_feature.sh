@@ -16,7 +16,7 @@ log() {
 train_set=train
 dev_set=dev
 test_sets=test
-datadir=dump/raw/org
+datadir=dump/raw
 feat_dir=dump_feats
 use_gpu=true
 feature_type=xeus
@@ -38,6 +38,12 @@ if [ $# -ne 0 ]; then
     exit 0
 fi
 
+if [ "${dset}" = "${train_set}" ] || [ "${dset}" = "${valid_set}" ]; then
+    _suf="/org"
+else
+    _suf=""
+fi
+
 
 if ${use_gpu}; then
     _cmd="${cuda_cmd}"
@@ -55,10 +61,10 @@ for dset in "${train_set}" "${dev_set}" ${test_sets}; do
     mkdir -p "${output_dir}"
     _logdir="${feat_dir}/${feature_type}/${suffix}${dset}/logdir"
     mkdir -p "${_logdir}"
-    nutt=$(<"${datadir}/${dset}"/wav.scp wc -l)
+    nutt=$(<"${datadir}${_suf}/${dset}"/wav.scp wc -l)
     _nj=$((nj<nutt?nj:nutt))
 
-    key_file="${datadir}/${dset}"/wav.scp
+    key_file="${datadir}${_suf}/${dset}"/wav.scp
     split_scps=""
     for n in $(seq ${_nj}); do
         split_scps+=" ${_logdir}/wav.${n}.scp"
@@ -67,7 +73,7 @@ for dset in "${train_set}" "${dev_set}" ${test_sets}; do
     utils/split_scp.pl "${key_file}" ${split_scps}
 
     # also split utt2num_samples by JOB
-    key_file="${datadir}/${dset}"/utt2num_samples
+    key_file="${datadir}${_suf}/${dset}"/utt2num_samples
     split_utt2num_samples=""
     for n in $(seq ${_nj}); do
         split_utt2num_samples+=" ${_logdir}/utt2num_samples.${n}"
@@ -96,8 +102,6 @@ for dset in "${train_set}" "${dev_set}" ${test_sets}; do
     for n in $(seq ${_nj}); do
         cat ${_logdir}/utt2num_frames.$n || exit 1;
     done > ${output_dir}/../utt2num_frames || exit 1
-    rm ${_logdir}/utt2num_frames.*
-
 
     # copy the feats.scp to data/*
     cp ${output_dir}/../feats.scp "data/${dset}"
