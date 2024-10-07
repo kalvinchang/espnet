@@ -2,8 +2,10 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 import kaldiio
 
+from espnet2.train.dataset import ESPnetDataset
 
-class IPAPack(Dataset):
+
+class IPAPack(ESPnetDataset):
     def __init__(self, scp_file, text_file):
         self.data, self.text = [], []
         # assumes feats.scp and text are in the same utterance order
