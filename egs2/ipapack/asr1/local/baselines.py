@@ -21,10 +21,6 @@ class XEUSEncoder(nn.Module):
             device=self.device
         )
         self.model = xeus_model
-        # TODO: load from file
-        self.model.num_layers = 19
-        # TODO: may need to cast model into S3PRLUpstream
-        self.weighted_sum = Featurizer(upstream=self.model)
 
     def forward(
         self,
@@ -35,14 +31,35 @@ class XEUSEncoder(nn.Module):
         # source: https://www.wavlab.org/activities/2024/xeus/
         # (xs_pad, intermediate_outs), olens, None
         # we recommend use_mask=True during fine-tuning
-        # TODO: double check the list form
-        feats = self.model.encode(wavs, speech_lengths, use_mask=True, use_final_output=False)[0]
+        # TODO: double check the list format
+        final_feats, feats = self.model.encode(wavs, speech_lengths, use_mask=True, use_final_output=False)[0]
         # ex: List of [batch, frames, model_dim] tensors
 
         # based on https://github.com/pytorch/audio/blob/ba696ea3dfec4cbe693bf06a84c75dc196077f5b/src/torchaudio/models/wav2vec2/model.py#L85
             # just return the length of the original data
             # the # frames of each item pre-padding
-        return self.weighted_sum(feats, speech_lengths)
+        return feats, speech_lengths
+
+
+class FinetuneXEUSPhonemeCTC(nn.Module):
+    def __init__(self, checkpoint_path):
+        super().__init__()
+        self.xeus = XEUSEncoder(checkpoint_path)
+        # TODO: load from file
+        self.xeus.model.num_layers = 19
+        # TODO: may need to cast model into S3PRLUpstream
+        self.weighted_sum = Featurizer(upstream=self.xeus.model)
+        # don't downsample to preserve as much temporal resolution as possible
+        self.encoder = LinearEncoder(input_size=1024, output_size=256, dropout_rate=0.1, input_layer="linear", normalize_before: bool = True)
+
+    def forward(
+        self,
+        speech: torch.Tensor,
+        speech_lengths: torch.Tensor,
+        text: torch.Tensor = None,
+        text_lengths: torch.Tensor = None,
+    ):
+        return self.encoder(self.weighted_sum(self.xeus(speech, speech_lengths)))
 
 
 def train():
