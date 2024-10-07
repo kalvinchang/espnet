@@ -1,15 +1,19 @@
 from local.dataset import IPAPack
-from local.
 from espnet2.asr.ctc import CTC
+from espnet2.asr.encoder.linear_encoder import LinearEncoder
+from espnet2.asr.preencoder.linear import LinearProjection
 from espnet2.train.collate_fn import common_collate_fn
 from espnet2.tasks.ssl import SSLTask
 
 import torch.nn
+from s3prl.nn import Featurizer
 
 
+# TODO: if time, could make this into a Frontend (multilayer_feature)
 class XEUSEncoder(nn.Module):
     # meant to be finetuned
     def __init__(self, checkpoint_path):
+        super().__init__()
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         xeus_model, xeus_train_args = SSLTask.build_model_from_file(
             config_file=None,
@@ -17,6 +21,10 @@ class XEUSEncoder(nn.Module):
             device=self.device
         )
         self.model = xeus_model
+        # TODO: load from file
+        self.model.num_layers = 19
+        # TODO: may need to cast model into S3PRLUpstream
+        self.weighted_sum = Featurizer(upstream=self.model)
 
     def forward(
         self,
@@ -34,12 +42,11 @@ class XEUSEncoder(nn.Module):
         # based on https://github.com/pytorch/audio/blob/ba696ea3dfec4cbe693bf06a84c75dc196077f5b/src/torchaudio/models/wav2vec2/model.py#L85
             # just return the length of the original data
             # the # frames of each item pre-padding
-        return feats, speech_lengths
+        return self.weighted_sum(feats, speech_lengths)
 
 
 def train():
     # takes in XEUS features and adds single CTC head
-    
     ctc = CTC(odim=vocab_size, encoder_output_size=xeus_model_dim)
     ctc_loss = ctc.loss_fn
     pass
@@ -47,6 +54,7 @@ def train():
 
 if __name__ == "__main__":
     checkpoint_path = '/ocean/projects/cis210027p/kchang1/XEUS/model/xeus_checkpoint.pth'
+    model = FinetuneXEUSPhonemeCTC(checkpoint_path)
     
     # TODO: argparse
     train_dset = IPAPack(scp_file="data/train/feats.scp", text_file="data/train/text")
