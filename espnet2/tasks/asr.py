@@ -39,6 +39,7 @@ from espnet2.asr.encoder.hubert_encoder import (
     FairseqHubertPretrainEncoder,
     TorchAudioHuBERTPretrainEncoder,
 )
+from espnet2.asr.encoder.linear_encoder import LinearEncoder
 from espnet2.asr.encoder.longformer_encoder import LongformerEncoder
 from espnet2.asr.encoder.multiconvformer_encoder import MultiConvConformerEncoder
 from espnet2.asr.encoder.rnn_encoder import RNNEncoder
@@ -166,6 +167,7 @@ encoder_choices = ClassChoices(
         hubert=FairseqHubertEncoder,
         hubert_pretrain=FairseqHubertPretrainEncoder,
         torchaudiohubert=TorchAudioHuBERTPretrainEncoder,
+        linear=LinearEncoder,
         longformer=LongformerEncoder,
         branchformer=BranchformerEncoder,
         whisper=OpenAIWhisperEncoder,
