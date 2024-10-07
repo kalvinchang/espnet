@@ -7,6 +7,7 @@ from espnet2.tasks.ssl import SSLTask
 
 import torch.nn
 from s3prl.nn import Featurizer
+from panphon import FeatureTable
 
 
 # TODO: if time, could make this into a Frontend (multilayer_feature)
@@ -62,10 +63,13 @@ class FinetuneXEUSPhonemeCTC(nn.Module):
         return self.encoder(self.weighted_sum(self.xeus(speech, speech_lengths)))
 
 
-def train():
+def train(artic_feats):
     # takes in XEUS features and adds single CTC head
-    ctc = CTC(odim=vocab_size, encoder_output_size=xeus_model_dim)
-    ctc_loss = ctc.loss_fn
+    # TODO: how does ESPnet infer the vocab_size? from a token_list ?
+    phoneme_ctc = CTC(odim=vocab_size, encoder_output_size=xeus_model_dim)
+    phoneme_ctc_loss = ctc.loss_fn
+
+    articulatory_ctc_losses = [CTC(odim=3, encoder_output_size=xeus_model_dim) for _ in artic_feats]
     pass
 
 
@@ -79,6 +83,8 @@ if __name__ == "__main__":
     # TODO: batch_bins ?
     train_loader = DataLoader(dataset, batch_size=4, collate_fn=common_collate_fn)
 
+    ft = FeatureTable()
+    artic_feats = ft.names
     
     # TODO: train loop
     for utt_ids, batch in train_loader:
