@@ -1,6 +1,19 @@
 from local.dataset import IPAPack
 from espnet2.train.collate_fn import common_collate_fn
 
+import torch.nn
+
+
+class FrozenFeatsSingleCTC(nn.Module):
+    def __init__(self, xeus_model_dim, vocab_dim):
+        super().__init__()
+        # takes in XEUS features and adds single CTC head
+        self.linear = nn.Linear(model_dim, vocab_dim)
+
+    def forward(self, x):
+        # TODO: check if this matches with ESPnet's input format
+        return self.linear(x)
+
 
 if __name__ == "__main__":
     # TODO: argparse
