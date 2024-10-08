@@ -11,17 +11,21 @@ valid_set="dev"
 test_sets="test"
 
 encoder=transformer
-frontend=xlsr
+frontend=xeus_frozen
 asr_config=conf/tuning/train_asr_${frontend}_${encoder}.yaml
 inference_config=conf/decode_asr.yaml
 
 ./asr.sh \
-    --lang en \
+    --stage 11 \
+    --ngpu 4 \
+    --nj 32 \
+    --gpu_inference true \
+    --inference_nj 4 \
     --token_type word \
     --max_wav_duration 30 \
     --use_lm false \
     --feats_normalize utt_mvn \
-    --feats_type raw \
+    --feats_type extracted \
     --asr_config "${asr_config}" \
     --inference_config "${inference_config}" \
     --inference_asr_model "valid.acc.best.pth" \
