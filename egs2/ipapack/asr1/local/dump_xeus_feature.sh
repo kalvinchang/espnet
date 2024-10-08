@@ -38,11 +38,6 @@ if [ $# -ne 0 ]; then
     exit 0
 fi
 
-if [ "${dset}" = "${train_set}" ] || [ "${dset}" = "${valid_set}" ]; then
-    _suf="/org"
-else
-    _suf=""
-fi
 
 
 if ${use_gpu}; then
