@@ -100,4 +100,7 @@ for dset in "${train_set}" "${dev_set}" ${test_sets}; do
 
     # copy the feats.scp to data/*
     cp ${output_dir}/../feats.scp "data/${dset}"
+
+    # sort the utterances by filename (each job above sorted by duration of utterance)
+    utils/fix_data_dir.sh "data/${dset}"
 done
