@@ -1,47 +1,110 @@
-import torch
-from torch.utils.data import Dataset, DataLoader
 import kaldiio
-import torchaudio
 import numpy as np
 from espnet2.train.dataset import ESPnetDataset
-
+import os
 
 class IPAPack(ESPnetDataset):
-    def __init__(self, scp_file, text_file, base_path="/ocean/projects/cis210027p/kchang1/espnet/egs2/ipapack/asr1/"):
+    def __init__(self, scp_file, text_file, utt2dur_file, 
+        base_path="/ocean/projects/cis210027p/kchang1/espnet/egs2/ipapack/asr1", 
+        max_audio_duration=20.0 
+    ):
         self.data = {}
         self.base_path = base_path
+        self.max_audio_duration = max_audio_duration  # Maximum allowed duration in seconds
+
+        # Load feature paths
+        self._load_scp(scp_file)
+
+        # Load text data
+        self._load_text(text_file)
+
+        # Map characters to integer IDs for encoding, ignoring spaces
+        unique_tokens = self.compute_vocab_size(text_file)
+        sorted_unique_tokens = sorted(unique_tokens)
+        self.char_to_int = {token: idx + 1 for idx, token in enumerate(sorted_unique_tokens)}  # Start indexing from 1 for padding
+        self.int_to_char = {idx: token for token, idx in self.char_to_int.items()}  # Reverse mapping for decoding
+        self.vocab_size = len(unique_tokens)
+
+        # Filter long audio utterances)
+        self._filter_by_duration_utt2dur(utt2dur_file)
+
+        # Final list of utterance IDs
+        self.utt_ids = sorted(self.data.keys())
+
+    def _load_scp(self, scp_file):
         with open(scp_file, 'r') as f:
             for line in f:
                 utt_id, path = line.strip().split(' ', 1)
                 self.data[utt_id] = {"feats_path": path}
 
+    def _load_text(self, text_file):
         with open(text_file, 'r') as f:
             for line in f:
                 parts = line.strip().split(' ', 1)
                 if len(parts) < 2:
-                    continue  # Skip lines if they don't contain phoneme sequence
-                utt_id = parts[0]
-                text = parts[1]
+                    continue
+                utt_id, text = parts
                 if utt_id in self.data:
                     self.data[utt_id]["text"] = text
                 else:
-                    raise ValueError(f"Text file contains an `utt_id` not found in the features file: {utt_id}")
+                    print(f"Warning: Text for {utt_id} not found in filtered features.")
 
-        # Remove entries without text
+        # Remove entries without text (empty texts)
         self.data = {utt_id: entry for utt_id, entry in self.data.items() if "text" in entry}
+
+    def compute_vocab_size(self, text_file):
+        """Compute the set of unique phonemes from the text file."""
+        with open(text_file, 'r') as f:
+            phoneme_set = set()
+            for line in f:
+                parts = line.strip().split(' ', 1)
+                if len(parts) == 2:
+                    _, text = parts
+                    phonemes = text.split(" ")
+                    phoneme_set.update(phonemes)
+        return phoneme_set
+
+    def _filter_by_duration_utt2dur(self, utt2dur_file):
+        """Filter utterances based on durations from utt2dur file."""
+        utt2dur = {}
+        fpath = '/ocean/projects/cis210027p/eyeo1/workspace/espnet/egs2/ipapack/asr1/local/data/' + utt2dur_file
+        with open(fpath, 'r') as f:
+            for line in f:
+                utt_id, dur = line.strip().split()
+                utt2dur[utt_id] = float(dur)
+
+        filtered_data = {}
+        for utt_id, entry in self.data.items():
+            duration = utt2dur.get(utt_id, None)
+            if duration is None:
+                print(f"Warning: Duration for {utt_id} not found in utt2dur. Skipping.")
+                continue
+            if duration <= self.max_audio_duration:
+                filtered_data[utt_id] = entry
+            else:
+                print(f"Skipping {utt_id}: duration {duration:.2f}s exceeds {self.max_audio_duration}s")
+        self.data = filtered_data
 
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, idx):
-        # Retrieve the `utt_id` by index from the dictionary's keys
-        utt_id = list(self.data.keys())[idx]
+        utt_id = self.utt_ids[idx]
         entry = self.data[utt_id]
-        feat_path = f"{self.base_path}/{entry['feats_path']}"
-        features = kaldiio.load_mat(feat_path)
+        feat_path = os.path.join(self.base_path, entry['feats_path'])
 
-        texts = np.array([ord(char) for char in entry["text"] if char != ' ' and ord(char) != 0], dtype=np.int32)
+        try:
+            features = kaldiio.load_mat(feat_path)
+        except Exception as e:
+            print(f"Error loading features for {utt_id}: {e}")
+            raise e
+
+        # Convert text to integer IDs, ignoring spaces
+        texts = np.array([self.char_to_int.get(char, 0) for char in entry["text"] if char != ' '], dtype=np.int32)
         return utt_id, {
-            "speech": features, ## num_frames x feature_dim
+            "speech": features,
             "text": texts,
-        }        
+        }
+
+    def get_vocab_size(self):
+        return self.vocab_size
