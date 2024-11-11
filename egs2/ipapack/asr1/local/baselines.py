@@ -48,7 +48,6 @@ class XEUSEncoder(nn.Module):
         # ex: List of [batch, frames, model_dim] tensors
         return feats
 
-
 class FinetuneXEUSPhonemeCTC(nn.Module):
     def __init__(self, checkpoint_path, device, vocab_size):
         super().__init__()
@@ -135,8 +134,7 @@ def train_step(model, optimizer, train_loader, articulatory_ctc, device):
     total_loss = 0
     for i, batch in tqdm(enumerate(train_loader)):
         optimizer.zero_grad()
-        # batch: {"speech": ..., "speech_lengths": ..., "text": ..., "text_lengths": ...}
-        utt_ids, data = batch
+        utt_ids, data = batch        
         speech = data["speech"].to(device)
         speech_lengths = data["speech_lengths"].to(device)
         text = data["text"].to(device)
@@ -150,17 +148,17 @@ def train_step(model, optimizer, train_loader, articulatory_ctc, device):
             artic_feats = ft.names
             articulatory_ctc_losses = [CTC(odim=3, encoder_output_size=256).loss_fn for _ in artic_feats]
             for aux_loss in articulatory_ctc_losses:
-                loss += aux_loss(logits)
-        else:
-            pass
+                aux_loss_val = aux_loss(logits, text, input_lengths, text_lengths)
+                loss += aux_loss_val  
+
+        # Accumulate gradients
         loss = loss / accumulation_steps
         loss.backward()
         if (i + 1) % accumulation_steps == 0:
             optimizer.step()
             optimizer.zero_grad()
-            torch.cuda.empty_cache()  # Clear CUDA cache periodically
-
-        total_loss += loss.item() * accumulation_steps  # Reverse the earlier division for accuracy
+            total_loss += loss.item()
+            torch.cuda.empty_cache() 
     return total_loss / len(train_loader)
 
 def dev_step(model, dev_loader, device):
@@ -170,7 +168,7 @@ def dev_step(model, dev_loader, device):
     total_samples = 0
     padding_value = -32768 ## based on common_collate_fn
     with torch.no_grad():
-        for batch in dev_loader:
+        for batch in tqdm(dev_loader):
             utt_ids, data = batch
             speech = data["speech"].to(device)
             speech_lengths = data["speech_lengths"].to(device)
