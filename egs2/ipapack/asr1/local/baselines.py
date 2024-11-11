@@ -1,3 +1,5 @@
+import os
+import glob 
 import argparse
 from pathlib import Path
 
@@ -126,13 +128,31 @@ def get_parser():
         default=0.001,
         required=True
     )
+    parser.add_argument(
+        "--max_audio_duration",
+        type=float,
+        default=20,
+        required=True
+    )
+
     return parser
 
-def train_step(model, optimizer, train_loader, articulatory_ctc, device):
-    accumulation_steps = 2
+def train_step(model, optimizer, train_loader, articulatory_ctc, device, epoch, iteration, accumulation_steps=4):
     model.train()
     total_loss = 0
+    checkpoint_files = []
+    print(iteration)
+
+        # Calculate the starting batch index for this epoch
+    batches_per_epoch = len(train_loader)
+    start_batch = start_iteration // batches_per_epoch
+
     for i, batch in tqdm(enumerate(train_loader)):
+        # Skip to start batch if resuming mid-epoch
+        if i < start_batch:
+            continue
+
+        iteration += 1
         optimizer.zero_grad()
         utt_ids, data = batch        
         speech = data["speech"].to(device)
@@ -158,8 +178,30 @@ def train_step(model, optimizer, train_loader, articulatory_ctc, device):
             optimizer.step()
             optimizer.zero_grad()
             total_loss += loss.item()
-            torch.cuda.empty_cache() 
-    return total_loss / len(train_loader)
+
+        # Save checkpoint every 1000 iterations
+        if iteration % 1000 == 0:
+            checkpoint_path = f"baseline_checkpoints/model_checkpoint_{args.max_audio_duration}_epoch{epoch}_iter{iteration}.pth"
+            torch.save({
+                'epoch': epoch,
+                'iteration': iteration,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'loss': loss.item(),
+            }, checkpoint_path)
+            checkpoint_files.append(checkpoint_path)
+
+            print(f"Checkpoint saved at iteration {iteration} (epoch {epoch}).")
+            torch.cuda.empty_cache()  # Clear GPU cache to free up memory
+
+            # Remove old checkpoints if limit is exceeded
+            if len(checkpoint_files) > 3:
+                oldest_checkpoint = checkpoint_files.pop(0)
+                if os.path.exists(oldest_checkpoint):
+                    os.remove(oldest_checkpoint)
+
+    return total_loss / len(train_loader), iteration
+
 
 def dev_step(model, dev_loader, device):
     model.eval()
@@ -193,10 +235,28 @@ def dev_step(model, dev_loader, device):
                 pred_text = " ".join([train_loader.dataset.int_to_char[idx] for idx in pred])
                 total_wer += jiwer.wer(target, pred_text)
                 total_samples += 1
-    
+
+            torch.cuda.empty_cache()
+
     avg_loss = total_loss / len(dev_loader)
     avg_wer = total_wer / total_samples
     return avg_loss, avg_wer
+
+def load_checkpoint(model, optimizer, device):
+    checkpoint_files = glob.glob(f"baseline_checkpoints/model_checkpoint_{args.max_audio_duration}_epoch*_iter*.pth")
+    if not checkpoint_files:
+        return 0, 0  # No checkpoint found, start from scratch
+    
+    latest_checkpoint = max(checkpoint_files, key=lambda x: int(x.split('_iter')[-1].split('.')[0]))
+    checkpoint = torch.load(latest_checkpoint, map_location=device)
+    
+    model.load_state_dict(checkpoint['model_state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    epoch = checkpoint['epoch']
+    iteration = checkpoint['iteration']
+    
+    print(f"Resuming from checkpoint {latest_checkpoint}: epoch {epoch}, iteration {iteration}")
+    return epoch, iteration
 
 if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -206,26 +266,27 @@ if __name__ == "__main__":
     args = parser.parse_args()
     print(args)
 
-    train_dset = IPAPack(scp_file=f"{args.train_dir}/feats.scp", text_file=f"{args.train_dir}/text", utt2dur_file="train_utt2dur")
-    # TODO: batch_bins ?
-    train_loader = DataLoader(train_dset, batch_size=1, shuffle=True, collate_fn=common_collate_fn, num_workers=4)
+    train_dset = IPAPack(scp_file=f"{args.train_dir}/feats.scp", text_file=f"{args.train_dir}/text", utt2dur_file="train_utt2dur",  max_audio_duration=args.max_audio_duration)
+    train_loader = DataLoader(train_dset, batch_size=2, shuffle=True, collate_fn=common_collate_fn, num_workers=4)
     dev_dset = IPAPack(scp_file=f"{args.dev_dir}/feats.scp", text_file=f"{args.dev_dir}/text", utt2dur_file="dev_utt2dur")
-    dev_loader = DataLoader(dev_dset, batch_size=1, collate_fn=common_collate_fn, num_workers=4)
+    dev_loader = DataLoader(dev_dset, batch_size=2, collate_fn=common_collate_fn, num_workers=4)
 
     vocab_size = train_dset.get_vocab_size()
     print(f"Vocabulary size: {vocab_size}")
     model = FinetuneXEUSPhonemeCTC(checkpoint_path=checkpoint_path, device=device, vocab_size=vocab_size).to(device)
     writer = SummaryWriter(log_dir="runs/fine_tuning_xeus_phoneme_ctc")
 
-    # TODO: take in beta from config
     optimizer = torch.optim.Adam(
         model.parameters(),
         lr=args.lr
     )
 
+    # Load the latest checkpoint if available
+    start_epoch, start_iteration = load_checkpoint(model, optimizer, device)
     best_dev_wer = float('inf') 
-    for epoch in range(args.epochs):
-        train_loss = train_step(model, optimizer, train_loader, args.articulatory_losses, device)
+    
+    for epoch in range(start_epoch, args.epochs):
+        train_loss, start_iteration = train_step(model, optimizer, train_loader, args.articulatory_losses, device, epoch, start_iteration)
         dev_loss, dev_wer = dev_step(model, dev_loader, device)
 
         writer.add_scalar("Loss/Train", train_loss, epoch)
