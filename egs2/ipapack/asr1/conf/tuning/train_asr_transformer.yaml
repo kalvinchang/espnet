@@ -1,6 +1,6 @@
 seed: 11711
 use_amp: true
-num_workers: 4
+num_workers: 5
 log_interval: 50  # debugging only
 batch_type: numel
 num_iters_per_epoch: 5000
