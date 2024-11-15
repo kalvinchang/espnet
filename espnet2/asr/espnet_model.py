@@ -267,45 +267,92 @@ class ESPnetASRModel(AbsESPnetModel):
             stats["cer_ctc"] = cer_ctc
 
         # Intermediate CTC (optional)
-        loss_interctc = 0.0
+        loss_interctc, interctc_loss_count = 0.0, 0
         if self.interctc_weight != 0.0 and intermediate_outs is not None:
             for layer_idx, intermediate_out in intermediate_outs:
                 # we assume intermediate_out has the same length & padding
                 # as those of encoder_out
 
-                # use auxillary ctc data if specified
-                loss_ic = None
+                # use auxiliary ctc data if specified
+                loss_ic, cer_ic = None, None
+                layer_interctc_loss_count = 0
                 if self.aux_ctc is not None:
                     idx_key = str(layer_idx)
                     if idx_key in self.aux_ctc:
-                        aux_data_key = self.aux_ctc[idx_key]
-                        aux_data_tensor = kwargs.get(aux_data_key, None)
-                        aux_data_lengths = kwargs.get(aux_data_key + "_lengths", None)
-
-                        if aux_data_tensor is not None and aux_data_lengths is not None:
-                            loss_ic, cer_ic = self._calc_ctc_loss(
-                                intermediate_out,
-                                encoder_out_lens,
-                                aux_data_tensor,
-                                aux_data_lengths,
-                            )
+                        if isinstance(self.aux_ctc[idx_key], list):
+                            # the same layer has multiple auxiliary CTC losses
+                            for aux_data_key in self.aux_ctc[idx_key]:
+                                aux_data_tensor = kwargs.get(aux_data_key, None)
+                                aux_data_lengths = kwargs.get(aux_data_key + "_lengths", None)
+                                if aux_data_tensor is not None and aux_data_lengths is not None:
+                                    aux_loss_ic, aux_cer_ic = self._calc_ctc_loss(
+                                        intermediate_out,
+                                        encoder_out_lens,
+                                        aux_data_tensor,
+                                        aux_data_lengths,
+                                    )
+                                    if loss_ic is None:
+                                        loss_ic = aux_loss_ic
+                                    else:
+                                        loss_ic += aux_loss_ic
+                                    if loss_ic is None:
+                                        cer_ic = aux_cer_ic
+                                    else:
+                                        cer_ic += aux_cer_ic
+                                else:
+                                    raise Exception(
+                                        "Aux. CTC tasks were specified but no data was found"
+                                    )
+                                layer_interctc_loss_count += 1
                         else:
-                            raise Exception(
-                                "Aux. CTC tasks were specified but no data was found"
-                            )
+                            # the layer has 1 CTC auxiliary loss
+                            aux_data_key = self.aux_ctc[idx_key]
+                            aux_data_tensor = kwargs.get(aux_data_key, None)
+                            aux_data_lengths = kwargs.get(aux_data_key + "_lengths", None)
+
+                            if aux_data_tensor is not None and aux_data_lengths is not None:
+                                aux_loss_ic, aux_cer_ic = self._calc_ctc_loss(
+                                    intermediate_out,
+                                    encoder_out_lens,
+                                    aux_data_tensor,
+                                    aux_data_lengths,
+                                )
+                                if loss_ic is None:
+                                    loss_ic = aux_loss_ic
+                                else:
+                                    loss_ic += aux_loss_ic
+                                if loss_ic is None:
+                                    cer_ic = aux_cer_ic
+                                else:
+                                    cer_ic += aux_cer_ic
+                            else:
+                                raise Exception(
+                                    "Aux. CTC tasks were specified but no data was found"
+                                )
+                            layer_interctc_loss_count += 1
                 if loss_ic is None:
+                    # if auxiliary data, calculate loss using the final text
+                    #   for this intermediate layer
                     loss_ic, cer_ic = self._calc_ctc_loss(
                         intermediate_out, encoder_out_lens, text, text_lengths
                     )
+                    # TODO: not sure if loss_ic can be None after aux_ctc
+                    layer_interctc_loss_count += 1
+                # Collect Intermediate CTC stats
+                #   average the loss/CER among each intermediate CTC
+                stats["loss_interctc_layer{}".format(layer_idx)] = (
+                    loss_ic.detach() / layer_interctc_loss_count
+                    if loss_ic is not None else None
+                )
+                stats["cer_interctc_layer{}".format(layer_idx)] = (
+                    cer_ic / layer_interctc_loss_count
+                )
+                interctc_loss_count += layer_interctc_loss_count
                 loss_interctc = loss_interctc + loss_ic
 
-                # Collect Intermedaite CTC stats
-                stats["loss_interctc_layer{}".format(layer_idx)] = (
-                    loss_ic.detach() if loss_ic is not None else None
-                )
-                stats["cer_interctc_layer{}".format(layer_idx)] = cer_ic
-
-            loss_interctc = loss_interctc / len(intermediate_outs)
+            # note: len(losses_interctc) != len(intermediate_outs)
+            #   when the same layer is used for multiple intermediate losses
+            loss_interctc = loss_interctc / num_interctc_losses
 
             # calculate whole encoder loss
             loss_ctc = (

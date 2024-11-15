@@ -282,6 +282,8 @@ class TransformerEncoder(AbsEncoder):
                     if self.normalize_before:
                         encoder_out = self.after_norm(encoder_out)
 
+                    # when the same layer is used for multiple aux CTC losses,
+                    #   we only store the intermediate output once
                     intermediate_outs.append((layer_idx + 1, encoder_out))
 
                     if self.interctc_use_conditioning:
