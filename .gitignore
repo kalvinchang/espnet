@@ -4,6 +4,7 @@
 \#*\#
 .\#*
 *DS_Store
+/build/
 dummy_token_list
 empty.py
 out.txt
@@ -14,6 +15,8 @@ tmp*
 .eggs/
 .hypothesis/
 .idea
+.python-version
+pyrightconfig.json
 .pytest_cache/
 __pycache__/
 check_autopep8
