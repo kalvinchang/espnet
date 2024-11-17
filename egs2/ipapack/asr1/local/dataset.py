@@ -4,10 +4,8 @@ from espnet2.train.dataset import ESPnetDataset
 import os
 
 class IPAPack(ESPnetDataset):
-    def __init__(self, scp_file, text_file, utt2dur_file, 
-        base_path="/ocean/projects/cis210027p/kchang1/espnet/egs2/ipapack/asr1", 
-        max_audio_duration=20.0 
-    ):
+    def __init__(self, scp_file, text_file, utt2dur_file, max_audio_duration,
+        base_path="/ocean/projects/cis210027p/kchang1/espnet/egs2/ipapack/asr1"):
         self.data = {}
         self.base_path = base_path
         self.max_audio_duration = max_audio_duration  # Maximum allowed duration in seconds
@@ -19,11 +17,11 @@ class IPAPack(ESPnetDataset):
         self._load_text(text_file)
 
         # Map characters to integer IDs for encoding, ignoring spaces
-        unique_tokens = self.compute_vocab_size(text_file)
-        sorted_unique_tokens = sorted(unique_tokens)
-        self.char_to_int = {token: idx + 1 for idx, token in enumerate(sorted_unique_tokens)}  # Start indexing from 1 for padding
-        self.int_to_char = {idx: token for token, idx in self.char_to_int.items()}  # Reverse mapping for decoding
+        unique_tokens = sorted(self.compute_vocab_size(text_file))
+        self.int_to_char = dict(enumerate(unique_tokens, start=1))
+        self.char_to_int = {v: k for k, v in self.int_to_char.items()}
         self.vocab_size = len(unique_tokens)
+        print(unique_tokens)
 
         # Filter long audio utterances)
         self._filter_by_duration_utt2dur(utt2dur_file)
@@ -66,6 +64,10 @@ class IPAPack(ESPnetDataset):
 
     def _filter_by_duration_utt2dur(self, utt2dur_file):
         """Filter utterances based on durations from utt2dur file."""
+        if 'dev' in utt2dur_file or 'test' in utt2dur_file:
+            print(f"Skipping filtering for {utt2dur_file}")
+            return self.data
+
         utt2dur = {}
         fpath = '/ocean/projects/cis210027p/eyeo1/workspace/espnet/egs2/ipapack/asr1/local/data/' + utt2dur_file
         with open(fpath, 'r') as f:
@@ -82,8 +84,14 @@ class IPAPack(ESPnetDataset):
             if duration <= self.max_audio_duration:
                 filtered_data[utt_id] = entry
             else:
-                print(f"Skipping {utt_id}: duration {duration:.2f}s exceeds {self.max_audio_duration}s")
+                continue
+                # print(f"Skipping {utt_id}: duration {duration:.2f}s exceeds {self.max_audio_duration}s")
         self.data = filtered_data
+
+    def set_debug(self, size=100):
+        print(f"Reducing dataset size to {size} for debugging")
+        self.data = {k: v for i, (k, v) in enumerate(self.data.items()) if i < size}
+        self.utt_ids = sorted(self.data.keys())
 
     def __len__(self):
         return len(self.data)
@@ -100,7 +108,7 @@ class IPAPack(ESPnetDataset):
             raise e
 
         # Convert text to integer IDs, ignoring spaces
-        texts = np.array([self.char_to_int.get(char, 0) for char in entry["text"] if char != ' '], dtype=np.int32)
+        texts = np.array([self.char_to_int[char] for char in entry["text"].split(' ')], dtype=np.int32)
         return utt_id, {
             "speech": features,
             "text": texts,
