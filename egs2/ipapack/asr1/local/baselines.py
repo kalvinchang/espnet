@@ -55,11 +55,7 @@ class FinetuneXEUSPhonemeCTC(nn.Module):
         self.xeus = XEUSEncoder(checkpoint_path, device)
         self.xeus.model.num_layers = 19
         self.weighted_sum = Featurizer(upstream=self.xeus.model)
-        # self.encoder = LinearEncoder(
-        #     input_size=1024, output_size=256, dropout_rate=0.1,
-        #     input_layer="linear", normalize_before=True)
         self.ctc = CTC(odim=vocab_size + 1, encoder_output_size=1024)
-        # self.config = SimpleNamespace(use_return_dict=True)
         if lora_config:
             # Apply LoRA to the XEUS model
             self.xeus.model = get_peft_model(self.xeus.model, lora_config)
@@ -82,7 +78,6 @@ class FinetuneXEUSPhonemeCTC(nn.Module):
     def forward(self, speech, speech_lengths):
         feats = self.xeus(speech, speech_lengths)
         feats, hs_len = self.weighted_sum(feats, [speech_lengths] * len(feats))
-        # feats = self.encoder(weighted_feats, hs_len)[0]
         return feats, hs_len
 
     def compute_loss(self, feats, labels, feat_lengths, label_lengths):
@@ -96,22 +91,6 @@ class FinetuneXEUSPhonemeCTC(nn.Module):
             seq = list(filter(lambda x: x not in (0, self.eos, self.sos), seq))
             seqs.append(seq)
         return seqs
-
-        # log_probs = nn.functional.log_softmax(logits, dim=-1)
-        # preds = torch.argmax(log_probs, dim=-1).cpu().numpy()  # Shape: [batch_size, max_time]
-
-        # sequences = []
-        # blank_id = 0
-        # for i, pred in enumerate(preds):
-        #     pred = pred[:input_lengths[i]]
-        #     seq = []
-        #     prev_token = None
-        #     for token in pred:
-        #         if token != blank_id and token != prev_token:
-        #             seq.append(token)
-        #         prev_token = token
-        #     sequences.append(seq)
-        return sequences
 
 def get_parser():
     parser = argparse.ArgumentParser(description="Phoneme recognition baselines with LoRA")
@@ -138,14 +117,9 @@ def train_step(model, optimizer, train_loader, articulatory_ctc, device, epoch, 
     total_loss = 0
     checkpoint_files = []
     batches_per_epoch = len(train_loader)
-    start_batch = iteration // batches_per_epoch
 
     print(f"Resuming training from Epoch {epoch}, Iteration {iteration}")
-
-    for i, batch in enumerate(tqdm(train_loader)):
-        if i < start_batch:
-            print(f"Skipping {start_batch} batches in Epoch {epoch}")
-            continue
+    for i, batch in enumerate(tqdm(train_loader, initial=iteration, total=len(train_loader))):
         iteration += 1  
         _, data = batch
         speech = data["speech"].to(device, non_blocking=True, dtype=torch.float32)
@@ -298,14 +272,9 @@ if __name__ == "__main__":
 
     optimizer = optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=args.lr)
     scaler = GradScaler("cuda")
-    writer = SummaryWriter(log_dir="runs/fine_tuning")
+    writer = SummaryWriter(log_dir=args.log_dir)
 
     start_epoch, start_iteration = load_checkpoint(model, optimizer, device)
-    if start_iteration > 0:
-        print(f"Resuming training from Epoch {start_epoch + 1}, Iteration {start_iteration + 1}")
-    else:
-        print("Starting training from scratch.")
-
     best_dev_loss = float("inf")
     for epoch in range(args.epochs):
         train_loss, start_iteration = train_step(model, optimizer, train_loader, args.articulatory_losses, device, epoch, start_iteration, args.accumulation_steps)
@@ -317,7 +286,8 @@ if __name__ == "__main__":
         print(f"Epoch {epoch + 1}, Train Loss: {train_loss:.4f}, Dev Loss: {dev_loss:.4f}")
         if dev_loss < best_dev_loss:
             best_dev_loss = dev_loss
-            torch.save(model.state_dict(), "best_model.pth")
+            torch.save(model.state_dict(), f"{args.checkpoint_dir}/model_checkpoint_{args.max_audio_duration}_"
+                f"{args.batch_size}_best_model.pth")
             print(f"New best model saved with Dev Loss: {best_dev_loss:.4f}")
 
     ### Evaluate ## 
