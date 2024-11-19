@@ -22,7 +22,7 @@ encoder_conf:
 decoder: null
 
 model_conf:
-    ctc_weight: 0.3
+    ctc_weight: 1.0
     lsm_weight: 0.1
     length_normalized_loss: false
     extract_feats_in_collect_stats: false
