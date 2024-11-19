@@ -78,6 +78,7 @@ class FinetuneXEUSPhonemeCTC(nn.Module):
     def forward(self, speech, speech_lengths):
         feats = self.xeus(speech, speech_lengths)
         feats, hs_len = self.weighted_sum(feats, [speech_lengths] * len(feats))
+        # feats = self.encoder(weighted_feats, hs_len)[0]
         return feats, hs_len
 
     def compute_loss(self, feats, labels, feat_lengths, label_lengths):
@@ -102,7 +103,6 @@ def get_parser():
     parser.add_argument("--max_audio_duration", type=float, default=20, required=True, help="Max audio duration in seconds")
     parser.add_argument("--batch_size", type=int, default=4, required=True, help="Batch size")
     parser.add_argument("--checkpoint_dir", type=Path, default=Path("baseline_checkpoints"), help="Directory to save checkpoints")
-    parser.add_argument("--log_dir", type=Path, default=Path("runs/fine_tuning_xeus_phoneme_ctc"), help="TensorBoard log directory")
     parser.add_argument("--lora_rank", type=int, default=8, help="LoRA rank")
     parser.add_argument("--lora_alpha", type=int, default=16, help="LoRA alpha")
     parser.add_argument("--lora_dropout", type=float, default=0.05, help="LoRA dropout")
@@ -147,7 +147,7 @@ def train_step(model, optimizer, train_loader, articulatory_ctc, device, epoch, 
         if iteration % 1000 == 0: 
             checkpoint_path = (
                 f"{args.checkpoint_dir}/model_checkpoint_{args.max_audio_duration}_"
-                f"{args.batch_size}_epoch{epoch}_iter{iteration}.pth"
+                f"{args.batch_size}_{args.lr}_epoch{epoch}_iter{iteration}.pth"
             )
             torch.save({
                 'epoch': epoch,
@@ -159,6 +159,8 @@ def train_step(model, optimizer, train_loader, articulatory_ctc, device, epoch, 
             }, checkpoint_path)
             checkpoint_files.append(checkpoint_path)
             print(f"Checkpoint saved at iteration {iteration} (epoch {epoch}).")
+
+            writer.add_scalar("Loss (iter)", loss.item(), iteration)
 
             # Remove old checkpoints if limit is exceeded
             if len(checkpoint_files) > 2:
@@ -211,7 +213,7 @@ def dev_step(model, dev_loader, device):
 
 
 def load_checkpoint(model, optimizer, device):
-    checkpoint_files = glob.glob(f"{args.checkpoint_dir}/model_checkpoint_{args.max_audio_duration}_{args.batch_size}_epoch*_iter*.pth")
+    checkpoint_files = glob.glob(f"{args.checkpoint_dir}/model_checkpoint_{args.max_audio_duration}_{args.batch_size}_{args.lr}_epoch*_iter*.pth")
     if not checkpoint_files:
         print("No checkpoints found. Starting training from scratch.")
         return 0, 0  # No checkpoint found, start from scratch
@@ -272,7 +274,7 @@ if __name__ == "__main__":
 
     optimizer = optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=args.lr)
     scaler = GradScaler("cuda")
-    writer = SummaryWriter(log_dir=args.log_dir)
+    writer = SummaryWriter(log_dir=f"runs/fine_tuning_xeus_phoneme_ctc_{args.max_audio_duration}_{args.batch_size}_{args.lr}")
 
     start_epoch, start_iteration = load_checkpoint(model, optimizer, device)
     best_dev_loss = float("inf")
@@ -287,11 +289,11 @@ if __name__ == "__main__":
         if dev_loss < best_dev_loss:
             best_dev_loss = dev_loss
             torch.save(model.state_dict(), f"{args.checkpoint_dir}/model_checkpoint_{args.max_audio_duration}_"
-                f"{args.batch_size}_best_model.pth")
+                f"{args.batch_size}_{args.lr}_best_model.pth")
             print(f"New best model saved with Dev Loss: {best_dev_loss:.4f}")
 
     ### Evaluate ## 
-    best_model_path = "best_model.pth"
+    best_model_path = f"{args.checkpoint_dir}/model_checkpoint_{args.max_audio_duration}_{args.batch_size}_{args.lr}_best_model.pth"
     model = FinetuneXEUSPhonemeCTC(checkpoint_path=checkpoint_path, device=device, vocab_size=vocab_size, beam_size=args.beam_size_test).to(device)
     model.load_state_dict(torch.load(best_model_path))
 
