@@ -299,6 +299,8 @@ class ESPnetASRModel(AbsESPnetModel):
                                         cer_ic = aux_cer_ic
                                     else:
                                         cer_ic += aux_cer_ic
+                                    # run backprop on each loss individually to save memory
+                                    aux_loss_ic.backward()
                                 else:
                                     raise Exception(
                                         "Aux. CTC tasks were specified but no data was found"
@@ -326,8 +328,6 @@ class ESPnetASRModel(AbsESPnetModel):
                                 else:
                                     cer_ic += aux_cer_ic
 
-                                # run backprop on each loss individually to save memory
-                                aux_loss_ic.backward()
                             else:
                                 raise Exception(
                                     "Aux. CTC tasks were specified but no data was found"
