@@ -8,13 +8,14 @@ preencoder_conf:
 encoder: transformer
 encoder_conf:
     output_size: 256
-    attention_heads: 4
-    linear_units: 1024
+    attention_heads: 8
+    linear_units: 2048
     num_blocks: 12
     dropout_rate: 0.1
     positional_dropout_rate: 0.1
     attention_dropout_rate: 0.1
     input_layer: conv2d2
+    # 20 ms resolution (1/2 length)
     normalize_before: true
     interctc_layer_idx: [11]  # use penultimate layer; 1-indexed
     interctc_use_conditioning: false  # self-conditioning
@@ -27,6 +28,7 @@ model_conf:
     length_normalized_loss: false
     extract_feats_in_collect_stats: false
     interctc_weight: 0.25
+    # use penultimate layer
     aux_ctc:
         '10':
             - syl
@@ -56,16 +58,14 @@ model_conf:
 aux_ctc_tasks: ["syl", "son", "cons", "cont", "delrel", "lat", "nas", "strid", "voi", "sg", "cg", "ant", "cor", "distr", "lab", "hi", "lo", "back", "round", "velaric", "tense", "long"]
 
 
-seed: 2022
-log_interval: 400
+seed: 11711
+log_interval: 50
 num_att_plot: 0
-num_workers: 4
-sort_in_batch: descending
-sort_batch: descending
+num_workers: 6
 batch_type: numel
-batch_bins: 16000000
-accum_grad: 4
-max_epoch: 70
+num_iters_per_epoch: 5000
+batch_bins: 7000000
+max_epoch: 100
 patience: none
 init: xavier_uniform
 best_model_criterion:
@@ -73,6 +73,7 @@ best_model_criterion:
     - acc
     - max
 keep_nbest_models: 10
+use_wandb: true
 
 use_amp: true
 cudnn_deterministic: false
@@ -80,8 +81,7 @@ cudnn_benchmark: false
 
 optim: adam
 optim_conf:
-    lr: 0.001
-    weight_decay: 0.000001
+    lr: 0.0001
 scheduler: warmuplr
 scheduler_conf:
-    warmup_steps: 15000
+    warmup_steps: 25000
