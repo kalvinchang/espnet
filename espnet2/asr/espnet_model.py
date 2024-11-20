@@ -295,7 +295,7 @@ class ESPnetASRModel(AbsESPnetModel):
                                         loss_ic = aux_loss_ic
                                     else:
                                         loss_ic += aux_loss_ic
-                                    if loss_ic is None:
+                                    if cer_ic is None:
                                         cer_ic = aux_cer_ic
                                     else:
                                         cer_ic += aux_cer_ic
@@ -321,7 +321,7 @@ class ESPnetASRModel(AbsESPnetModel):
                                     loss_ic = aux_loss_ic
                                 else:
                                     loss_ic += aux_loss_ic
-                                if loss_ic is None:
+                                if cer_ic is None:
                                     cer_ic = aux_cer_ic
                                 else:
                                     cer_ic += aux_cer_ic
@@ -346,6 +346,7 @@ class ESPnetASRModel(AbsESPnetModel):
                 )
                 stats["cer_interctc_layer{}".format(layer_idx)] = (
                     cer_ic / layer_interctc_loss_count
+                    if cer_ic is not None else None
                 )
                 interctc_loss_count += layer_interctc_loss_count
                 loss_interctc = loss_interctc + loss_ic
