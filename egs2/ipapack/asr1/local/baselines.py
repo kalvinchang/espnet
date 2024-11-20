@@ -134,6 +134,8 @@ def train_step(model, optimizer, train_loader, articulatory_ctc, device, epoch, 
             loss = model.compute_loss(feats, text, input_lengths, text_lengths)
             loss = loss / accumulation_steps
 
+        # https://stackoverflow.com/questions/53994625/how-can-i-process-multi-loss-in-pytorch
+        # backward() before step() for each loss
         scaler.scale(loss).backward()
 
         if (i + 1) % accumulation_steps == 0:
