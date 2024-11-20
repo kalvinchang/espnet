@@ -56,6 +56,7 @@ class FinetuneXEUSPhonemeCTC(nn.Module):
         self.xeus.model.num_layers = 19
         self.weighted_sum = Featurizer(upstream=self.xeus.model)
         self.ctc = CTC(odim=vocab_size + 1, encoder_output_size=1024)
+        self.aux_ctc = CTC(odim=3, encoder_output_size=1024) # (+, 0, -)
         if lora_config:
             # Apply LoRA to the XEUS model
             self.xeus.model = get_peft_model(self.xeus.model, lora_config)
@@ -82,7 +83,18 @@ class FinetuneXEUSPhonemeCTC(nn.Module):
         return feats, hs_len
 
     def compute_loss(self, feats, labels, feat_lengths, label_lengths):
-        return self.ctc(feats, feat_lengths, labels, label_lengths)
+        loss = self.ctc(feats, feat_lengths, labels, label_lengths)
+        if args.articulatory_losses is True:
+            ft = FeatureTable()
+            artic_feats = ft.names
+            aux_losses = [self.aux_ctc for _ in artic_feats]
+            gt = []
+            for label in labels: gt.append(ft.word_array(ft_names=ft.names, word=label) +1) # (-1,0,1)->(0,1,2)
+            gt = np.array(gt).transpose(2,0,1) # [B, seq, artic_feat] -> [artic_feat, B, seq]
+            for i, aux_loss in enumerate(aux_losses):
+                al = aux_loss(feats, feat_lengths, gt[i], label_lengths)
+                loss += 0.05 * al # so that all of them add up to ~1?
+        return loss
 
     def decode(self, feats, feat_lengths):
         seqs = []
@@ -177,7 +189,7 @@ def train_step(model, optimizer, train_loader, articulatory_ctc, device, epoch, 
 def dev_step(model, dev_loader, device):
     model.eval()
     total_loss = 0
-    total_wer = 0
+    total_wer, total_per = 0, 0
     total_samples = 0
     padding_value = -32768 ## based on common_collate_fn
     with torch.no_grad():
@@ -205,13 +217,15 @@ def dev_step(model, dev_loader, device):
             for pred, target in zip(predicted_sequences, target_sequences):
                 pred_text = " ".join([train_loader.dataset.int_to_char[idx] for idx in pred])
                 total_wer += jiwer.wer(target, pred_text)
+                total_per += jiwer.cer(target, pred_text)
                 total_samples += 1
 
             torch.cuda.empty_cache()
 
     avg_loss = total_loss / len(dev_loader)
     avg_wer = total_wer / total_samples
-    return avg_loss, avg_wer
+    avg_per = total_per / total_samples
+    return avg_loss, avg_wer, avg_per
 
 
 def load_checkpoint(model, optimizer, device):
@@ -299,7 +313,8 @@ if __name__ == "__main__":
     model = FinetuneXEUSPhonemeCTC(checkpoint_path=checkpoint_path, device=device, vocab_size=vocab_size, beam_size=args.beam_size_test).to(device)
     model.load_state_dict(torch.load(best_model_path))
 
-    _, test_wer = dev_step(model, test_loader, device)
-    print(f"Test WER: {test_wer:.4f}")
+    _, test_wer, test_per = dev_step(model, test_loader, device)
+    print(f"Test WER: {test_wer:.4f}; Test PER: {test_per:.4f}")
     writer.add_scalar("WER/Test", test_wer, epoch)
+    writer.add_scalar("PER/Test", test_per, epoch)
     writer.close()
