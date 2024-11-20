@@ -313,8 +313,8 @@ if __name__ == "__main__":
     model = FinetuneXEUSPhonemeCTC(checkpoint_path=checkpoint_path, device=device, vocab_size=vocab_size, beam_size=args.beam_size_test).to(device)
     model.load_state_dict(torch.load(best_model_path))
 
-    _, test_wer, test_per = dev_step(model, test_loader, device)
-    print(f"Test WER: {test_wer:.4f}; Test PER: {test_per:.4f}")
+    _, test_wer, test_per = dev_step(model, test_loader, device) # WER & CER = PER & CER in our case?
+    print(f"Test WER: {test_wer:.4f}; Test CER: {test_per:.4f}")
     writer.add_scalar("WER/Test", test_wer, epoch)
-    writer.add_scalar("PER/Test", test_per, epoch)
+    writer.add_scalar("CER/Test", test_per, epoch)
     writer.close()
