@@ -291,6 +291,9 @@ class ESPnetASRModel(AbsESPnetModel):
                                         aux_data_tensor,
                                         aux_data_lengths,
                                     )
+                                    # backprop should be done here
+                                    # do not add to accumulator to avoid memory issue
+                                    aux_loss_ic.backward()
                                     if loss_ic is None:
                                         loss_ic = aux_loss_ic
                                     else:
@@ -299,8 +302,7 @@ class ESPnetASRModel(AbsESPnetModel):
                                         cer_ic = aux_cer_ic
                                     else:
                                         cer_ic += aux_cer_ic
-                                    # run backprop on each loss individually to save memory
-                                    aux_loss_ic.backward()
+                                    # run backprop on each loss individually to save memoryaux_loss_ic.backward()
                                 else:
                                     raise Exception(
                                         "Aux. CTC tasks were specified but no data was found"
@@ -359,9 +361,6 @@ class ESPnetASRModel(AbsESPnetModel):
             loss_interctc = loss_interctc / num_interctc_losses
 
             # calculate whole encoder loss
-            loss_ctc = (
-                1 - self.interctc_weight
-            ) * loss_ctc + self.interctc_weight * loss_interctc
 
         if self.use_transducer_decoder:
             # 2a. Transducer decoder branch
