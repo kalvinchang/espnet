@@ -8,7 +8,6 @@ import pandas as pd
 from tarfile import ReadError
 from phonepiece.ipa import read_ipa
 
-# TODO: remove
 from tqdm import tqdm
 
 # adapted from https://github.com/juice500ml/espnet/blob/wav2gloss/egs2/
@@ -39,8 +38,7 @@ def get_parser():
     return parser
 
 
-def generate_train_dev_test_splits(original_dataset, split, utt_id,
-                                   doreco_splits):
+def get_original_split(original_dataset, split, utt_id, doreco_splits):
     # DoReCo: language code (ex: ana1239)
         # use their splits (Table 11) - train/test
         # they use glottocode https://doreco.huma-num.fr/languages
@@ -56,6 +54,15 @@ def generate_train_dev_test_splits(original_dataset, split, utt_id,
     elif original_dataset == 'fleurs':
         return split.split('-')[1]
 
+
+def generate_train_dev_test_splits(original_dataset, split, utt_id,
+                                   doreco_splits):
+    split = get_original_split(original_dataset, split, utt_id, doreco_splits)
+    assert split in ['train', 'dev', 'test']
+
+    if split == 'test':
+        return f'test_{original_dataset}'
+    return split
 
 
 def write_dir(source_dir, target_dir, transcripts):
@@ -163,8 +170,6 @@ if __name__ == "__main__":
 
     df = pd.DataFrame(rows, columns=['utt_id', 'orig_split', 'dataset',
                                      'path', 'ipa'])
-    df.to_csv(args.source_dir / 'transcript.csv',
-              index=False)
     # train/dev/test splits
     df['split'] = df.apply(lambda row: generate_train_dev_test_splits(
                             row['dataset'], row['orig_split'], row['utt_id'],
