@@ -52,7 +52,7 @@ if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
     # untarring happens here
     python3 local/data_prep.py --source_dir ${IPAPACK} --target_dir data --min_wav_length ${min_wav_duration}
 
-    for dir in data/train data/dev data/test; do
+    for dir in data/train data/dev data/test_fleurs data/test_doreco data/test_mswc; do
         utils/fix_data_dir.sh $dir
         utils/validate_data_dir.sh --no-feats $dir || exit 1
     done
