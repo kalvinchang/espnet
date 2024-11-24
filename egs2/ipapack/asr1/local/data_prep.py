@@ -66,9 +66,10 @@ def write_dir(source_dir, target_dir, transcripts):
 
     count = 0
     for _, row in transcripts.iterrows():
-        utt_id, path, ipa, orig_split = (row['utt_id'], row['path'],
-                                             row['ipa'],
-                                             row['orig_split'])
+        utt_id, path, dataset, ipa, orig_split = (row['utt_id'], row['path'],
+                                                  row['dataset'],
+                                                  row['ipa'],
+                                                  row['orig_split'])
 
         # generate a new utterance id
         new_utt_id = f"aaaaa_{dataset}_{orig_split}_{count:020d}"
