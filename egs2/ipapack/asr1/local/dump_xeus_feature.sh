@@ -85,7 +85,7 @@ for dset in "${train_set}" "${dev_set}" ${test_sets}; do
             --layer "${layer}" \
             --write_num_frames "ark,t:${_logdir}/utt2num_frames.JOB" \
             --utt2num_samples "${_logdir}/utt2num_samples.JOB" \
-            --batch_bins 5000000 \
+            --batch_bins 1000000 \
             "scp:${_logdir}/wav.JOB.scp" \
             "ark,scp:${output_dir}/feats.JOB.ark,${output_dir}/feats.JOB.scp" || exit 1;
 
