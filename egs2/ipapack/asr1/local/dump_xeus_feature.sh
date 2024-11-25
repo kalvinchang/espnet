@@ -15,7 +15,7 @@ log() {
 
 train_set=train
 dev_set=dev
-test_sets=test
+test_sets="test_doreco test_mswc test_fleurs"
 datadir=dump/raw
 feat_dir=dump_feats
 use_gpu=true
