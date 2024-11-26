@@ -159,7 +159,8 @@ if __name__ == "__main__":
                 wavfile.write(new_path, SAMPLING_RATE, audio)
 
                 ipa = normalize_text(ipa, ipa_tokenizer)
-                split_rows.append((utt_id, split, original_dataset, new_path, ipa))
+                split_rows.append((utt_id, split, original_dataset, new_path,
+                                   ipa))
         except ReadError as e:
             # currently, only yuca1254 has problems
             print('failed to untar', path, e)
