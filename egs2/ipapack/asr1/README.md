@@ -5,7 +5,10 @@ Phoneme recognition is a commmon task in speech benchmarks (e.g. SUPERB), as one
 Aside from the CMU Wilderness dataset (14000 hours across 700 languages), IPAPack [1] provides one of the largest multilingual phonemically transcribed datasets, with 1,000 hours across 115 languages. IPAPack is derived from:
 * FLEURS
 * DoReCo
-* MSWC (Multilingual Spoken Word Corpus)
+* MSWC (Multilingual Spoken Word Corpus) - clips of single words padded to 1 second
+
+
+As such, this recipe contains three test sets: `test_fleurs`, `test_doreco`, and `test_mswc`
 
 
 * TODO: results
