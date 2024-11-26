@@ -1,6 +1,6 @@
 # IPAPack
 
-Phoneme recognition is a commmon task in speech benchmarks (e.g. SUPERB), as one desideratum of speech models is to learn basic pronunciation units. TIMIT is one of the most famous datasets for phoneme recognition. However, TIMIT only includes American English.
+Phoneme recognition is a common task in speech benchmarks (e.g. SUPERB), as one desideratum of speech models is to learn basic pronunciation units. TIMIT is one of the most famous datasets for phoneme recognition. However, TIMIT only includes American English.
 
 Aside from the CMU Wilderness dataset (14000 hours across 700 languages), IPAPack [1] provides one of the largest multilingual phonemically transcribed datasets, with 1,000 hours across 115 languages. IPAPack is derived from:
 * FLEURS
