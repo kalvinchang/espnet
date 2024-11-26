@@ -1,10 +1,10 @@
 seed: 11711
 use_amp: true
-num_workers: 5
+num_workers: 6
 log_interval: 50  # debugging only
 batch_type: numel
 num_iters_per_epoch: 5000
-batch_bins: 7500000
+batch_bins: 7000000
 max_epoch: 100
 patience: none
 # The initialization method for model parameters
@@ -25,7 +25,7 @@ encoder_conf:
     positional_dropout_rate: 0.1
     attention_dropout_rate: 0.0
     input_layer: conv2d
-    # 40 ms resolution
+    # 40 ms resolution (1/4 length)
     normalize_before: true
 
 decoder: transformer
@@ -46,23 +46,7 @@ model_conf:
 
 optim: adam
 optim_conf:
-    lr: 0.0001 # previously 002
+    lr: 0.0001
 scheduler: warmuplr
 scheduler_conf:
     warmup_steps: 25000
-
-# specaug: specaug
-# specaug_conf:
-#     apply_time_warp: true
-#     time_warp_window: 5
-#     time_warp_mode: bicubic
-#     apply_freq_mask: true
-#     freq_mask_width_range:
-#     - 0
-#     - 30
-#     num_freq_mask: 2
-#     apply_time_mask: true
-#     time_mask_width_range:
-#     - 0
-#     - 40
-#     num_time_mask: 2
