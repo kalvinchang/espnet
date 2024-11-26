@@ -3,9 +3,14 @@
 Phoneme recognition is a common task in speech benchmarks (e.g. SUPERB), as one desideratum of speech models is to learn basic pronunciation units. TIMIT is one of the most famous datasets for phoneme recognition. However, TIMIT only includes American English.
 
 Aside from the CMU Wilderness dataset (14000 hours across 700 languages), IPAPack [1] provides one of the largest multilingual phonemically transcribed datasets, with 1,000 hours across 115 languages. IPAPack is derived from:
-* FLEURS [2]
-* DoReCo [3]
-* MSWC (Multilingual Spoken Word Corpus) [4] - clips of single words padded to 1 second
+* FLEURS [2] - "the speech version of the FLoRes machine translation benchmark"
+    * Creative Commons license
+* DoReCo [3] - speech across 50 endangered languages from language documentation archives (44 languages in IPAPack)
+    * Creative Commons license
+    * [1] put the languages with a Creative Commons Non-Commercial license in the test set.
+    * As required, we cite each constituent dataset within DoReCo.
+* MSWC (Multilingual Spoken Word Corpus) [4] - clips of single words padded to 1 second derived with forced alignment from Mozilla Common Voice across 50 languages (36 in IPAPack)
+    * Creative Commons license
 
 
 As such, this recipe contains three test sets: `test_fleurs`, `test_doreco`, and `test_mswc`
@@ -56,3 +61,4 @@ Note: a 20,000 hour will be released soon.
 
 [4] Mark Mazumder, Sharad Chitlangia, Colby Banbury, Yiping Kang, Juan Manuel Ciro, Keith Achorn, Daniel Galvez et al. 2021. Multilingual spoken words corpus. In *Thirty-fifth Conference on Neural Information Processing Systems Datasets and Benchmarks Track* (Round 2).
 
+[5] Mathieu Avanzi, Marie-José Béguelin, Gilles Corminboeuf, Federica Diémoz, and Laure Anne Johnsen. 2022. French (Swiss) DoReCo dataset. In Frank Seifart, Ludger Paschen, and Matthew Stave, editors, Language Documentation Reference Corpus (DoReCo) 1.2. Leibniz-Zentrum Allgemeine Sprachwissenschaft & laboratoire Dynamique Du Langage (UMR5596, CNRS & Université Lyon 2), Berlin & Lyon.
