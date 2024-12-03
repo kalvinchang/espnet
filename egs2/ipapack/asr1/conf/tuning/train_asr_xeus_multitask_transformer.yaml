@@ -15,7 +15,8 @@ encoder_conf:
     positional_dropout_rate: 0.1
     attention_dropout_rate: 0.1
     input_layer: conv2d2
-    # 20 ms resolution (1/2 length)
+    # since it's already using XEUS features, don't need much downsampling
+    # 1/2 length
     normalize_before: true
     interctc_layer_idx: [11]  # use penultimate layer; 1-indexed
     interctc_use_conditioning: false  # self-conditioning
