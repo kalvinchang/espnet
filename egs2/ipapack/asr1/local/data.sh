@@ -11,6 +11,7 @@ stage=1       # start from 0 if you need to start from data preparation
 stop_stage=100
 min_wav_duration=0.5
 SECONDS=0
+preprocessing_flags=--flac_ark
 
 asr_data_dir=
 
@@ -50,7 +51,7 @@ if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
     log "stage 1: Preparing Data for IPAPack"
 
     # untarring happens here
-    python3 local/data_prep.py --source_dir ${IPAPACK} --target_dir data --min_wav_length ${min_wav_duration}
+    python3 local/data_prep.py --source_dir ${IPAPACK} --target_dir data --min_wav_length ${min_wav_duration} ${preprocessing_flags}
 
     for dir in data/train data/dev data/test_fleurs data/test_doreco data/test_mswc; do
         utils/fix_data_dir.sh $dir

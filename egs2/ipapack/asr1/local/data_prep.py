@@ -1,12 +1,14 @@
 import argparse
-import glob
 from pathlib import Path
+import os
 
 import webdataset as wds
 from scipy.io import wavfile
 import pandas as pd
 from tarfile import ReadError
 from phonepiece.ipa import read_ipa
+from kaldiio import WriteHelper
+import kaldiio
 
 from tqdm import tqdm
 
@@ -34,6 +36,11 @@ def get_parser():
         "--min_wav_length",
         type=float,
         default=0.5,
+    )
+    parser.add_argument(
+        "--flac_ark",
+        action="store_true",
+        help="Stores audio in flac.ark format instead of single wav files"
     )
     return parser
 
@@ -65,29 +72,48 @@ def generate_train_dev_test_splits(original_dataset, split, utt_id,
     return split
 
 
-def write_dir(source_dir, target_dir, transcripts):
+def write_dir(source_dir, target_dir, transcripts, ark_format=False):
     wavscp = open(target_dir / "wav.scp", "w", encoding="utf-8")
     text = open(target_dir / "text", "w", encoding="utf-8")
     utt2spk = open(target_dir / "utt2spk", "w", encoding="utf-8")
     utt_id_mapping = open(source_dir / "uttid_map", "w", encoding="utf-8")
 
     count = 0
+    scp_index = 0
+    scp_lines = []
+    last_path = ""
     for _, row in transcripts.iterrows():
-        utt_id, path, ipa, orig_split = (row['utt_id'], row['path'],
-                                             row['ipa'],
-                                             row['orig_split'])
+        utt_id, path, language, ipa, orig_split = (
+            row['utt_id'], row['path'], row["language"], row['ipa'], row['orig_split']
+        )
+
+        if ark_format:
+            # Switch to new scp file
+            if path != last_path:
+                # Reset state
+                scp_index = 0
+                last_path = path
+                # Track new scp file
+                with open(path, "r", encoding="utf-8") as scp_file:
+                    scp_lines = scp_file.readlines()
+
+            # Extract path with index within the ark file
+            wav_path = scp_lines[scp_index].split(maxsplit=1)[1].strip()
+        else:
+            wav_path = path
 
         # generate a new utterance id
-        new_utt_id = f"aaaaa_{dataset}_{orig_split}_{count:020d}"
+        new_utt_id = f"aaaaa_{language}_{row['dataset']}_{orig_split}_{count:020d}"
         # map original utt_id to nnew_utt_id
         utt_id_mapping.write(f"{utt_id} {new_utt_id}\n")
 
-        wavscp.write(f"{new_utt_id} {path}\n")
+        wavscp.write(f"{new_utt_id} {wav_path}\n")
         text.write(f"{new_utt_id} {ipa}\n")
         # ESPnet does not use speaker info for ASR anymore
         utt2spk.write(f"{new_utt_id} aaaaa\n")
 
         count += 1
+        scp_index += 1
 
     wavscp.close()
     text.close()
@@ -118,9 +144,89 @@ def get_dataset_name(tar_path):
         return 'doreco'
 
 
-if __name__ == "__main__":
-    SAMPLING_RATE = 16000
+def get_language(data: str, split: str, utt_id: str) -> str:
+    match data:
+        case "doreco":
+            return split
+        case "fleurs":
+            return split.split("-", 1)[0].replace("_", "-")
+        case "mswc":
+            return utt_id.split("_", 1)[0]
 
+    raise ValueError(f"Unsupported dataset: {data!r}")
+
+
+SAMPLING_RATE = 16000
+
+
+def unpack_files(web_dataset, original_dataset, split, source_dir, ipa_tokenizer, min_wav_length):
+    split_rows = []
+    for utt_id, _, audio, _, ipa in web_dataset:
+        new_path = (f'{source_dir}/{original_dataset}/'
+                    f'{split}/{utt_id}.wav')
+        Path(new_path).parent.mkdir(parents=True, exist_ok=True)
+
+        # audio is just a list of samples.
+        # SAMPLING_RATE determines how many samples per sec.
+        # enforce min_wav_length
+        if len(audio) / SAMPLING_RATE < min_wav_length:
+            continue
+        wavfile.write(new_path, SAMPLING_RATE, audio)
+
+        language = get_language(original_dataset, split, utt_id)
+        ipa = normalize_text(ipa, ipa_tokenizer)
+        split_rows.append((utt_id, split, original_dataset, language, new_path, ipa))
+
+    return split_rows
+
+
+class WriteHelperFlac(WriteHelper):
+    FLAC_KWARGS = {"format": "flac"}
+
+    def __call__(self, key, array):
+        if self.closed:
+            raise RuntimeError("WriteHelper has been already closed")
+        kaldiio.save_ark(
+            self.fark,
+            {key: array},
+            scp=self.fscp,
+            text=self.text,
+            compression_method=self.compression_method,
+            write_function=self.write_function,
+            write_kwargs=self.FLAC_KWARGS,
+        )
+
+        if self.flush:
+            if self.fark is not None:
+                self.fark.flush()
+            if self.fscp is not None:
+                self.fscp.flush()
+
+
+def archive_files(web_dataset, original_dataset, split, source_dir, ipa_tokenizer, min_wav_length):
+    split_rows = []
+    directory = Path(os.path.join(source_dir, original_dataset, split))
+    directory.mkdir(parents=True, exist_ok=True)
+    scp_path = directory / f"{split}.scp"
+
+    with WriteHelperFlac(f"ark,scp:{directory / f'{split}.flac.ark'},{scp_path}", write_function="soundfile") as ark_writer:
+        for utt_id, _, audio, _, ipa in web_dataset:
+            # audio is just a list of samples.
+            # SAMPLING_RATE determines how many samples per sec.
+            # enforce min_wav_length
+            if len(audio) / SAMPLING_RATE < min_wav_length:
+                continue
+            # wavfile.write(new_path, SAMPLING_RATE, audio)
+            ark_writer(utt_id, (audio, SAMPLING_RATE))
+
+            language = get_language(original_dataset, split, utt_id)
+            ipa = normalize_text(ipa, ipa_tokenizer)
+            split_rows.append((utt_id, split, original_dataset, language, scp_path, ipa))
+
+    return split_rows
+
+
+def main():
     parser = get_parser()
     args = parser.parse_args()
     min_wav_length = args.min_wav_length
@@ -136,7 +242,7 @@ if __name__ == "__main__":
 
     rows = []
     # glob is non-deterministic -> sort after globbing
-    for i, path in tqdm(enumerate(sorted(args.source_dir.glob("*.tar")))):
+    for path in tqdm(sorted(args.source_dir.glob("*.tar"))):
         split = path.stem
         original_dataset = get_dataset_name(path)
 
@@ -144,32 +250,20 @@ if __name__ == "__main__":
         ds = wds.WebDataset(path).decode()
         ds = ds.to_tuple("__key__", "__url__", "npy", "__local_path__", "txt")
 
-        split_rows = []
         try:
-            for utt_id, _, audio, _, ipa in ds:
-                new_path = (f'{args.source_dir}/{original_dataset}/'
-                            f'{split}/{utt_id}.wav')
-                Path(new_path).parent.mkdir(parents=True, exist_ok=True)
-
-                # audio is just a list of samples.
-                # SAMPLING_RATE determines how many samples per sec.
-                # enforce min_wav_length
-                if len(audio) / SAMPLING_RATE < min_wav_length:
-                    continue
-                wavfile.write(new_path, SAMPLING_RATE, audio)
-
-                ipa = normalize_text(ipa, ipa_tokenizer)
-                split_rows.append((utt_id, split, original_dataset, new_path, ipa))
+            if args.flac_ark:
+                rows += archive_files(ds, original_dataset, split, args.source_dir, ipa_tokenizer, min_wav_length)
+            else:
+                rows += unpack_files(ds, original_dataset, split, args.source_dir, ipa_tokenizer, min_wav_length)
         except ReadError as e:
             # currently, only yuca1254 has problems
-            print('failed to untar', path, e)
+            tqdm.write(f"failed to untar {path} {e}")
             # do not add any rows related to this language
             continue
-        print('\nfinished', path)
-        rows += split_rows
+        tqdm.write(f"\nfinished {path}")
 
     df = pd.DataFrame(rows, columns=['utt_id', 'orig_split', 'dataset',
-                                     'path', 'ipa'])
+                                     'language', 'path', 'ipa'])
     # train/dev/test splits
     df['split'] = df.apply(lambda row: generate_train_dev_test_splits(
                             row['dataset'], row['orig_split'], row['utt_id'],
@@ -181,4 +275,8 @@ if __name__ == "__main__":
     for split, split_df in df.groupby('split'):
         split_dir = args.target_dir / split
         split_dir.mkdir(parents=True, exist_ok=True)
-        write_dir(args.source_dir, split_dir, split_df)
+        write_dir(args.source_dir, split_dir, split_df, args.flac_ark)
+
+
+if __name__ == "__main__":
+    main()
