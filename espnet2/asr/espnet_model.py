@@ -109,6 +109,10 @@ class ESPnetASRModel(AbsESPnetModel):
 
         if not hasattr(self.encoder, "interctc_use_conditioning"):
             self.encoder.interctc_use_conditioning = False
+        # Configures whether the encoder requires utterance IDs as an argument
+        # in the forward pass
+        if not hasattr(self.encoder, "requires_utt_id"):
+            self.encoder.requires_utt_id = False
         if self.encoder.interctc_use_conditioning:
             self.encoder.conditioning_layer = torch.nn.Linear(
                 vocab_size, self.encoder.output_size()
@@ -262,7 +266,7 @@ class ESPnetASRModel(AbsESPnetModel):
         text = text[:, : text_lengths.max()]
 
         # 1. Encoder
-        encoder_out, encoder_out_lens = self.encode(speech, speech_lengths)
+        encoder_out, encoder_out_lens = self.encode(speech, speech_lengths, utt_id=kwargs["utt_id"])
         intermediate_outs = None
         if isinstance(encoder_out, tuple):
             intermediate_outs = encoder_out[1]
@@ -445,7 +449,7 @@ class ESPnetASRModel(AbsESPnetModel):
         return {"feats": feats, "feats_lengths": feats_lengths}
 
     def encode(
-        self, speech: torch.Tensor, speech_lengths: torch.Tensor, max_layer: int = None
+        self, speech: torch.Tensor, speech_lengths: torch.Tensor, max_layer: int = None, utt_id: Union[List[str], None] = None
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Frontend + Encoder. Note that this method is used by asr_inference.py
 
@@ -491,25 +495,29 @@ class ESPnetASRModel(AbsESPnetModel):
         # -> encoder_out: (Batch, Length2, Dim2)
         if self.global_step <= self.freeze_encoder_updates:
             with torch.no_grad():
+                extra_args = {}
                 if self.encoder.interctc_use_conditioning or getattr(
                     self.encoder, "ctc_trim", False
                 ):
-                    encoder_out, encoder_out_lens, _ = self.encoder(
-                        feats, feats_lengths, ctc=self.ctc
-                    )
-                else:
-                    encoder_out, encoder_out_lens, _ = self.encoder(
-                        feats, feats_lengths
-                    )
+                    extra_args["ctc"] = self.ctc
+                if self.encoder.requires_utt_id:
+                    extra_args["utt_id"] = utt_id
+
+                encoder_out, encoder_out_lens, _ = self.encoder(
+                    feats, feats_lengths, **extra_args
+                )
         else:
+            extra_args = {}
             if self.encoder.interctc_use_conditioning or getattr(
                 self.encoder, "ctc_trim", False
             ):
-                encoder_out, encoder_out_lens, _ = self.encoder(
-                    feats, feats_lengths, ctc=self.ctc
-                )
-            else:
-                encoder_out, encoder_out_lens, _ = self.encoder(feats, feats_lengths)
+                extra_args["ctc"] = self.ctc
+            if self.encoder.requires_utt_id:
+                extra_args["utt_id"] = utt_id
+
+            encoder_out, encoder_out_lens, _ = self.encoder(
+                feats, feats_lengths, **extra_args
+            )
 
         intermediate_outs = None
         if isinstance(encoder_out, tuple):

@@ -24,6 +24,7 @@ from espnet2.asr.decoder.transformer_decoder import (
 )
 from espnet2.asr.decoder.whisper_decoder import OpenAIWhisperDecoder
 from espnet2.asr.encoder.abs_encoder import AbsEncoder
+from espnet2.asr.encoder.allophant import AllophantLayers
 from espnet2.asr.encoder.avhubert_encoder import FairseqAVHubertEncoder
 from espnet2.asr.encoder.branchformer_encoder import BranchformerEncoder
 from espnet2.asr.encoder.conformer_encoder import ConformerEncoder
@@ -174,6 +175,7 @@ encoder_choices = ClassChoices(
         e_branchformer=EBranchformerEncoder,
         avhubert=FairseqAVHubertEncoder,
         multiconv_conformer=MultiConvConformerEncoder,
+        allophant=AllophantLayers,
     ),
     type_check=AbsEncoder,
     default="rnn",
