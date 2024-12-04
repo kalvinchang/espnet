@@ -270,6 +270,16 @@ def main():
                                 wave, rate = soundfile.read(g)
                         subtypes = None
 
+                    # Detect paths to ark files
+                    elif ":" in wavpath:
+                        if args.multi_columns_input:
+                            raise RuntimeError(
+                                "Not supporting multi_columns wav.scp for *.ark paths"
+                            )
+
+                        # Load audio from target path within an ark archive
+                        rate, wave = kaldiio.load_mat(wavpath)
+                        subtypes = None
                     # B.b Without segments and not using pipe
                     else:
                         if args.multi_columns_input:
