@@ -54,6 +54,7 @@ class ESPnetASRModel(AbsESPnetModel):
         ctc: CTC,
         joint_network: Optional[torch.nn.Module],
         aux_ctc: Optional[dict] = None,
+        aux_ctc_share_vocab: Optional[bool] = False,
         ctc_weight: float = 0.5,
         interctc_weight: float = 0.0,
         ignore_id: int = -1,
@@ -186,8 +187,24 @@ class ESPnetASRModel(AbsESPnetModel):
                     token_list, sym_space, sym_blank, report_cer, report_wer
                 )
 
+        self.aux_ctc_share_vocab = aux_ctc_share_vocab
         if ctc_weight == 0.0:
             self.ctc = None
+        elif aux_ctc_share_vocab:
+            # each loss gets its own CTC
+            self.ctc = {}
+            for idx_key in self.aux_ctc:
+                if isinstance(self.aux_ctc[idx_key], list):
+                    for aux_data_key in self.aux_ctc[idx_key]:
+                        # TODO: get vocab size, encoder_output_size, ctc_conf
+                        # see https://github.com/espnet/espnet/blob/353edb72ee15041a8895cfb6098a1d40bc1a139f/espnet2/tasks/asr.py#L606
+                        self.aux_ctc[aux_data_key] = CTC(
+                            odim=vocab_size,
+                            encoder_output_size=encoder_output_size,
+                            **args.ctc_conf
+                        )
+                else:
+                    self.ctc[idx_key] = ctc
         else:
             self.ctc = ctc
 
@@ -290,6 +307,7 @@ class ESPnetASRModel(AbsESPnetModel):
                                         encoder_out_lens,
                                         aux_data_tensor,
                                         aux_data_lengths,
+                                        aux_data_key
                                     )
                                     # backprop should be done here
                                     # do not add to accumulator to avoid memory issue
@@ -320,6 +338,7 @@ class ESPnetASRModel(AbsESPnetModel):
                                     encoder_out_lens,
                                     aux_data_tensor,
                                     aux_data_lengths,
+                                    aux_data_key
                                 )
                                 if loss_ic is None:
                                     loss_ic = aux_loss_ic
@@ -673,9 +692,13 @@ class ESPnetASRModel(AbsESPnetModel):
         encoder_out_lens: torch.Tensor,
         ys_pad: torch.Tensor,
         ys_pad_lens: torch.Tensor,
+        ctc_key: str = None
     ):
-        # Calc CTC loss
-        loss_ctc = self.ctc(encoder_out, encoder_out_lens, ys_pad, ys_pad_lens)
+        if ctc_key is None:
+            # Calc CTC loss
+            loss_ctc = self.ctc(encoder_out, encoder_out_lens, ys_pad, ys_pad_lens)
+        else:
+            loss_ctc = self.ctc[ctc_key](encoder_out, encoder_out_lens, ys_pad, ys_pad_lens)
 
         # Calc CER using CTC
         cer_ctc = None
