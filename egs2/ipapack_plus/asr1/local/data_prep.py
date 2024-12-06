@@ -75,6 +75,10 @@ def generate_train_dev_test_splits(source_dir, dataset_shards):
     return splits
 
 
+def get_utt_id(dataset, split, count):
+    return f"aaaaa_{dataset}_{split}_{count:025d}"
+
+
 if __name__ == "__main__":
     logging.basicConfig(
         level=logging.DEBUG,
@@ -100,7 +104,9 @@ if __name__ == "__main__":
     datasets = sorted(datasets)
     logging.info(f"{len(datasets)} speech train data files found: {datasets}")
 
-    logging.info("Beginning processing dataset")
+    rows, utt_count = [], 1
+
+    logging.info("Starting to process dataset")
     data_dir.mkdir(parents=True, exist_ok=True)
     splits = generate_train_dev_test_splits(source_dir, dataset_shards)
     for split, split_datasets in splits.items():
@@ -120,15 +126,38 @@ if __name__ == "__main__":
 
             logging.info(f"{len(supervision)} shards found")
 
+            # load from the downloaded shard
             cuts = CutSet.from_shar(
                         {
                             "cuts": supervision,
                             "recording": recording
                         }
                     )
+            # each cut is like an utterance
+            for cut in tqdm(cuts, miniters=1000):
+                metadata = cut.supervisions
+                if len(metadata) == 0:
+                    logging.error('metadata list length 0')
+                elif len(metadata) != 1:
+                    logging.error('metadata list longer than 1')
+                metadata = metadata[0]
 
-            for cut in tqdm(cuts):
-                writer.write(cut)
+                # utterance level information
+                old_utt_id = metadata.recording_id
+                utt_id = get_utt_id(dataset, split, utt_count)
+                utt_count += 1
+                duration = metadata.duration
+                
+                lang = metadata.language
+                speaker = metadata.speaker
+                # transcript
+                text = metadata.custom.orthographic
+                ipa_original = metadata.custom.original
+                ipa_clean = metadata.text
+                shard = shard_origin
+                # path to audio
+                path = str((dataset_path / utt_id).with_suffix('.wav'))
+                rows.append((utt_id, old_utt_id, dataset, split, duration, lang, speaker, text, ipa_original, ipa_clean, shard, path))
 
             logging.info(f"Processing done! {len(datasets)-i-1}" +
                           "datasets remaining.")
