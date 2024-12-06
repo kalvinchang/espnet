@@ -22,6 +22,7 @@ do
     for audio_tar in $dataset/**/recording*.tar;
     do
         SPLIT=$(cut -d'/' -f3 <<< "$audio_tar")
-        tar -xvf $audio_tar -C $dataset/$SPLIT/
+        mkdir -p $target_dir/$SPLIT
+        tar -xf $audio_tar -C $target_dir/$SPLIT/
     done
 done
