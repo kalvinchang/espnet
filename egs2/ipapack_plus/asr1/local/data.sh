@@ -40,16 +40,13 @@ fi
 if [ ${stage} -le 0 ] && [ ${stop_stage} -ge 0 ]; then
     log "stage 0: Download Data to ${IPAPACK_PLUS}"
 
-    mkdir ${IPAPACK_PLUS}
-    pip3 install -r local/requirements.txt
-
-    python3 local/download.py
+    mkdir -p ${IPAPACK_PLUS}
+    local/download.sh ${IPAPACK_PLUS}
 fi
 
 if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
     log "stage 1: Preparing Data for IPAPack+"
 
-    # untarring happens here
     python3 local/data_prep.py --source_dir ${IPAPACK_PLUS} --target_dir data --min_wav_length ${min_wav_duration}
 
     for dir in data/train data/dev data/test_fleurs data/test_doreco data/test_mswc; do
