@@ -63,14 +63,14 @@ def generate_train_dev_test_splits(source_dir, dataset_shards):
     train_dev_test_splits = {}
 
     # the subdirectories of shard_name are the original splits from Jian
-    splits = defaultdict(list) # split -> dataset
+    splits = defaultdict(list) # split -> dataset name
     for shard in dataset_shards:
         shard_name = shard.stem
         dataset = shard_name.replace("_shar", "")
         for orig_split in shard.iterdir():
             orig_split_name = orig_split.stem
             split = get_split(source_dir, dataset, orig_split_name)
-            splits[split].append(orig_split)
+            splits[split].append((dataset, orig_split_name))
 
     return splits
 
@@ -104,17 +104,21 @@ if __name__ == "__main__":
     data_dir.mkdir(parents=True, exist_ok=True)
     splits = generate_train_dev_test_splits(source_dir, dataset_shards)
     for split, split_datasets in splits.items():
-        for i, dataset in tqdm(enumerate(split_datasets)):
-            logging.info("Processing %s" % data_path)
+        for i, (dataset, orig_split_name) in tqdm(enumerate(split_datasets)):
+            # ex: downloads/mls_portuguese/test
+            dataset_path = source_dir / dataset / orig_split_name
+            logging.info("Processing %s" % dataset)
 
             # glob is non-deterministic -> sort after globbing
-            supervision = sorted(data_path.glob('*/cuts*'))
+            #   order is important
+            #   b/c CutSet assumes cuts is in the same order as recording
+            supervision = sorted(dataset_path.glob('cuts*'))
             supervision = [str(f) for f in supervision]
-            recording = sorted(data_path.glob('*/recording*'))
+            recording = sorted(dataset_path.glob('recording*'))
             recording = [str(f) for f in recording]
             assert len(supervision) == len(recording)
 
-            logging.info("%s shards found" % len(supervision))
+            logging.info(f"{len(supervision)} shards found")
 
             cuts = CutSet.from_shar(
                         {
