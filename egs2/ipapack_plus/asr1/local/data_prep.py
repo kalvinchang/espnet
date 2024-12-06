@@ -1,12 +1,19 @@
+import argparse
+from collections import defaultdict
+import glob
+import logging
 import os
+from pathlib import Path
 import sys
-from tqdm import tqdm
+
 from ipatok import tokenise
 from glob import glob
 from lhotse import CutSet
-from lhotse.shar.writers import SharWriter
-from pathlib import Path
-import logging
+import pandas as pd
+from scipy.io import wavfile
+from tarfile import ReadError
+from tqdm import tqdm
+import webdataset as wds
 
 
 def get_parser():
@@ -33,6 +40,40 @@ def get_parser():
     return parser
 
 
+def get_split(source_dir, dataset, orig_split):
+    TEST_SETS = {
+        "librispeech", "mls", "aishell"
+    }
+
+    # use the splits Jian already created
+    if dataset == "doreco":
+        # all of DoReCo is a test set
+        return "test_doreco"
+    elif "test" in orig_split:
+        return f"test_{dataset}"
+    elif "dev" in orig_split:
+        return "dev"
+    else:
+        # may not always contain train/dev/test
+        # e.g. kazakh2_shar/audio2
+        return "train"
+
+
+def generate_train_dev_test_splits(source_dir, dataset_shards):
+    train_dev_test_splits = {}
+
+    # the subdirectories of shard_name are the original splits from Jian
+    splits = defaultdict(list) # split -> dataset
+    for shard in dataset_shards:
+        shard_name = shard.stem
+        dataset = shard_name.replace("_shar", "")
+        for orig_split in shard.iterdir():
+            orig_split_name = orig_split.stem
+            split = get_split(source_dir, dataset, orig_split_name)
+            splits[split].append(orig_split)
+
+    return splits
+
 
 if __name__ == "__main__":
     logging.basicConfig(
@@ -51,20 +92,19 @@ if __name__ == "__main__":
     data_dir = args.target_dir
 
     # get list of datasets in IPAPack++
-    datasets = source_dir.glob('*_shar')
-    datasets = [d.parts[1] for d in datasets]
+    dataset_shards = source_dir.glob('*_shar')
+    # ex: downloads/aishell_shar -> aishell_shar
+    datasets = [d.parts[1] for d in dataset_shards]
     datasets = list(set(datasets))
-    # set is non-deterministic
+    # set and glob are non-deterministic, so sort
     datasets = sorted(datasets)
     logging.info(f"{len(datasets)} speech train data files found: {datasets}")
 
     logging.info("Beginning processing dataset")
     data_dir.mkdir(parents=True, exist_ok=True)
-    with SharWriter(
-        data_dir, fields={"recording": "flac"}, shard_size=20000
-    ) as writer:
-        for i, dataset in tqdm(enumerate(datasets)):
-            data_path = source_dir / dataset
+    splits = generate_train_dev_test_splits(source_dir, dataset_shards)
+    for split, split_datasets in splits.items():
+        for i, dataset in tqdm(enumerate(split_datasets)):
             logging.info("Processing %s" % data_path)
 
             # glob is non-deterministic -> sort after globbing
