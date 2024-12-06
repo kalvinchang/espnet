@@ -47,33 +47,31 @@ if __name__ == "__main__":
     parser = get_parser()
     args = parser.parse_args()
     min_wav_length = args.min_wav_length
+    source_dir = args.source_dir
+    data_dir = args.target_dir
 
-    inpath = args.source_dir
-    outpath = args.target_dir
-
-    # get list of datasets in IPAPack+
-    filelist = glob(inpath + '/**/*.jsonl.gz', recursive=True)
-    datasets = [file.replace(inpath, '') for file in filelist]
-    datasets = [file.replace(os.path.basename(file), '') for file in datasets]
+    # get list of datasets in IPAPack++
+    datasets = source_dir.glob('*_shar')
+    datasets = [d.parts[1] for d in datasets]
     datasets = list(set(datasets))
-    datasets = [file for file in datasets \
-        if 'dev' not in file and 'test' not in file and 'doreco' not in file]
-    print(datasets)
-    logging.info("%s speech train data files found!" % len(datasets))
-    logging.info("Beginning processing dataset")
-    data_dir = Path(outpath)
-    data_dir.mkdir(parents=True, exist_ok=True)
+    # set is non-deterministic
+    datasets = sorted(datasets)
+    logging.info(f"{len(datasets)} speech train data files found: {datasets}")
 
+    logging.info("Beginning processing dataset")
+    data_dir.mkdir(parents=True, exist_ok=True)
     with SharWriter(
         data_dir, fields={"recording": "flac"}, shard_size=20000
     ) as writer:
-        for i, dataset in enumerate(datasets):
-            data_path = inpath / dataset
-            data_dir.mkdir(parents=True, exist_ok=True)
+        for i, dataset in tqdm(enumerate(datasets)):
+            data_path = source_dir / dataset
             logging.info("Processing %s" % data_path)
 
-            supervision = sorted(glob(os.path.join(data_path, 'cuts*')))
-            recording = sorted(glob(os.path.join(data_path, 'recording*')))
+            # glob is non-deterministic -> sort after globbing
+            supervision = sorted(data_path.glob('*/cuts*'))
+            supervision = [str(f) for f in supervision]
+            recording = sorted(data_path.glob('*/recording*'))
+            recording = [str(f) for f in recording]
             assert len(supervision) == len(recording)
 
             logging.info("%s shards found" % len(supervision))
@@ -88,6 +86,5 @@ if __name__ == "__main__":
             for cut in tqdm(cuts):
                 writer.write(cut)
 
-            logging.info("Processing done! %s datasets remaining."
-                % (len(datasets)-i-1))
-
+            logging.info(f"Processing done! {len(datasets)-i-1}" +
+                          "datasets remaining.")
