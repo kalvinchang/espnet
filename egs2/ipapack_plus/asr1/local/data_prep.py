@@ -96,7 +96,7 @@ if __name__ == "__main__":
     data_dir = args.target_dir
 
     # get list of datasets in IPAPack++
-    dataset_shards = source_dir.glob('*_shar')
+    dataset_shards = list(source_dir.glob('*_shar'))
     # ex: downloads/aishell_shar -> aishell_shar
     datasets = [d.parts[1] for d in dataset_shards]
     datasets = list(set(datasets))
@@ -109,18 +109,22 @@ if __name__ == "__main__":
     logging.info("Starting to process dataset")
     data_dir.mkdir(parents=True, exist_ok=True)
     splits = generate_train_dev_test_splits(source_dir, dataset_shards)
+
     for split, split_datasets in splits.items():
         for i, (dataset, orig_split_name) in tqdm(enumerate(split_datasets)):
-            # ex: downloads/mls_portuguese/test
+            # ex: downloads/mls_portuguese/test - untarred files
             dataset_path = source_dir / dataset / orig_split_name
+            # ex: downloads/mls_portuguese_shar/test - the cuts are here
+            shar_folder = dataset + '_shar'
+            shar_path = source_dir / shar_folder / orig_split_name
             logging.info("Processing %s" % dataset)
 
             # glob is non-deterministic -> sort after globbing
             #   order is important
             #   b/c CutSet assumes cuts is in the same order as recording
-            supervision = sorted(dataset_path.glob('cuts*'))
+            supervision = sorted(shar_path.glob('cuts*'))
             supervision = [str(f) for f in supervision]
-            recording = sorted(dataset_path.glob('recording*'))
+            recording = sorted(shar_path.glob('recording*'))
             recording = [str(f) for f in recording]
             assert len(supervision) == len(recording)
 
@@ -138,6 +142,7 @@ if __name__ == "__main__":
                 metadata = cut.supervisions
                 if len(metadata) == 0:
                     logging.error('metadata list length 0')
+                    continue
                 elif len(metadata) != 1:
                     logging.error('metadata list longer than 1')
                 metadata = metadata[0]
@@ -151,13 +156,33 @@ if __name__ == "__main__":
                 lang = metadata.language
                 speaker = metadata.speaker
                 # transcript
-                text = metadata.custom.orthographic
-                ipa_original = metadata.custom.original
+                text = ''
+                if 'orthographic' in metadata.custom:
+                    text = metadata.custom['orthographic']
+                ipa_original = ''
+                if 'original' in metadata.custom:
+                    ipa_original = metadata.custom['original']
+                elif 'phones' in metadata.custom:
+                    ipa_original = metadata.custom['phones']
                 ipa_clean = metadata.text
-                shard = shard_origin
+                shard = ''
+                if 'shard_origin' in cut.custom:
+                    shard = cut.custom['shard_origin']
                 # path to audio
                 path = str((dataset_path / utt_id).with_suffix('.wav'))
-                rows.append((utt_id, old_utt_id, dataset, split, duration, lang, speaker, text, ipa_original, ipa_clean, shard, path))
+                rows.append((utt_id, old_utt_id, dataset, split, shard, duration, lang, speaker, text, ipa_original, ipa_clean, path))
 
-            logging.info(f"Processing done! {len(datasets)-i-1}" +
-                          "datasets remaining.")
+            logging.info(f"Processing done! {len(split_datasets)-i-1}" +
+                          "datasets remaining for the split.")
+
+
+    # TODO: verify everything above works
+    columns = [
+        'utt_id', 'old_utt_id', 'dataset', 'split', 'shard', 'duration',
+        'lang', 'speaker',
+        'text', 'ipa_original', 'ipa_clean',
+        'path'
+    ]
+    df = pd.DataFrame(rows, columns=columns)
+    df.to_csv(source_dir / 'transcript.csv', index=False)
+    logging.info("saved transcripts and metadata to downloads/transcript.csv")
