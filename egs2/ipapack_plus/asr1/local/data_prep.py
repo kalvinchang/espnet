@@ -185,6 +185,55 @@ def normalize_phones(transcription):
     return " ".join(ipa_tokens)
 
 
+
+def df_to_kaldi(df, source_dir, data_dir):
+    # preprocess into kaldi format
+    ipa_tokenizer = read_ipa()
+
+    # kaldi format
+    for split, split_df in df.groupby('split'):
+        print("testing", split)
+
+        # to save time
+        if "test" not in split:
+            continue
+
+        split_dir = args.target_dir / split
+        split_dir.mkdir(parents=True, exist_ok=True)
+        write_dir(args.source_dir, split_dir, split_df)
+
+
+# adapted from https://github.com/juice500ml/espnet/blob/wav2gloss/egs2/
+#       wav2gloss/asr1/local/data_prep.py
+def write_dir(source_dir, target_dir, transcripts):
+    wavscp = open(target_dir / "wav.scp", "w", encoding="utf-8")
+    text = open(target_dir / "text", "w", encoding="utf-8")
+    utt2spk = open(target_dir / "utt2spk", "w", encoding="utf-8")
+    utt_id_mapping = open(source_dir / "uttid_map", "w", encoding="utf-8")
+
+    for _, row in transcripts.iterrows():
+        utt_id, path, dataset, ipa = (row['utt_id'], row['path'],
+                                                  row['dataset'],
+                                                  row['ipa'])
+
+        old_utt_id = row['old_utt_id']
+        # map original utt_id to new utt_id (note: not required by kaldi)
+        utt_id_mapping.write(f"{old_utt_id} {utt_id}\n")
+
+        wavscp.write(f"{utt_id} {path}\n")
+        text.write(f"{utt_id} {ipa}\n")
+        # ESPnet does not use speaker info for ASR anymore
+        utt2spk.write(f"{utt_id} aaaaa\n")
+
+    wavscp.close()
+    text.close()
+    utt2spk.close()
+    utt_id_mapping.close()
+
+    logging.info(f"{target_dir}: {len(transcripts)} lines
+        written to {str(target_dir)}.")
+
+
 if __name__ == "__main__":
     logging.basicConfig(
         level=logging.DEBUG,
