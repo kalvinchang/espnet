@@ -172,6 +172,19 @@ def generate_df(source_dir, data_dir):
     return df
 
 
+def normalize_phones(transcription):
+    # remove long vowels
+    # use IPA ɡ
+    transcription = transcription.replace("ː", "").replace("g", "ɡ")
+
+    # remove whitespace
+    ipa = "".join(transcription.split())
+    # phone(me) tokenizer (ipatok)
+    ipa_tokens = tokenise(ipa)
+    # re-introduce spaces (like TIMIT)
+    return " ".join(ipa_tokens)
+
+
 if __name__ == "__main__":
     logging.basicConfig(
         level=logging.DEBUG,
@@ -205,3 +218,8 @@ if __name__ == "__main__":
     }
     df = df[~df['split'].isin(FLEURS_EXCLUDE)]
 
+    # normalize phones
+    df['split'] = df.apply(lambda row: normalize_phones(row['text']), axis=1)
+    df.to_csv(source_dir / 'transcript_normalized.csv', index=False)
+
+    df_to_kaldi(df, source_dir, target_dir)
