@@ -191,7 +191,7 @@ def df_to_kaldi(df, source_dir, data_dir):
     ipa_tokenizer = read_ipa()
 
     # kaldi format
-    for split, split_df in df.groupby('split'):
+    for split, split_df in tqdm(df.groupby('split')):
         print("testing", split)
 
         # to save time
@@ -210,11 +210,11 @@ def write_dir(source_dir, target_dir, transcripts):
     text = open(target_dir / "text", "w", encoding="utf-8")
     utt2spk = open(target_dir / "utt2spk", "w", encoding="utf-8")
     utt_id_mapping = open(source_dir / "uttid_map", "w", encoding="utf-8")
+    prompt = open(source_dir / "prompt", "w", encoding="utf-8")
 
     for _, row in transcripts.iterrows():
-        utt_id, path, dataset, ipa = (row['utt_id'], row['path'],
-                                                  row['dataset'],
-                                                  row['ipa'])
+        utt_id, path, dataset, ipa, orthography = (row['utt_id'], row['path'],
+            row['dataset'], row['ipa_clean'], row['text'])
 
         old_utt_id = row['old_utt_id']
         # map original utt_id to new utt_id (note: not required by kaldi)
@@ -224,6 +224,10 @@ def write_dir(source_dir, target_dir, transcripts):
         text.write(f"{utt_id} {ipa}\n")
         # ESPnet does not use speaker info for ASR anymore
         utt2spk.write(f"{utt_id} aaaaa\n")
+
+        if pd.isna(orthography):
+            orthography = ''
+        prompt.write(f"{utt_id} {orthography}\n")
 
     wavscp.close()
     text.close()
@@ -254,6 +258,7 @@ if __name__ == "__main__":
     if output.exists():
         logging.info(f"loading transcripts and metadata from {str(output)}")
         df = pd.read_csv(output)
+        logging.info(f"finished loading transcripts and metadata from {str(output)}")
     else:
         df = generate_df(source_dir, target_dir)
     
@@ -266,9 +271,15 @@ if __name__ == "__main__":
         'ny_mw', 'mn_mn', 'so_so', 'my_mm'
     }
     df = df[~df['split'].isin(FLEURS_EXCLUDE)]
+    logging.info("finished removing languages")
+
+    # drop empty rows
+    df = df.dropna(subset=["ipa_clean"])
 
     # normalize phones
-    df['text'] = df.apply(lambda row: normalize_phones(row['text']), axis=1)
+    df['ipa_clean'] = df.apply(lambda row: normalize_phones(row['ipa_clean']), axis=1)
+    logging.info("finished text normalization")
     df.to_csv(source_dir / 'transcript_normalized.csv', index=False)
 
     df_to_kaldi(df, source_dir, target_dir)
+    logging.info("finished converting to kaldi format")
