@@ -230,8 +230,8 @@ def write_dir(source_dir, target_dir, transcripts):
     utt2spk.close()
     utt_id_mapping.close()
 
-    logging.info(f"{target_dir}: {len(transcripts)} lines
-        written to {str(target_dir)}.")
+    logging.info(f"{target_dir}: {len(transcripts)} lines" +
+        "written to {str(target_dir)}.")
 
 
 if __name__ == "__main__":
@@ -253,7 +253,7 @@ if __name__ == "__main__":
     output = Path(source_dir / 'transcript.csv')
     if output.exists():
         logging.info(f"loading transcripts and metadata from {str(output)}")
-        df = pd.load_csv(output)
+        df = pd.read_csv(output)
     else:
         df = generate_df(source_dir, target_dir)
     
@@ -268,7 +268,7 @@ if __name__ == "__main__":
     df = df[~df['split'].isin(FLEURS_EXCLUDE)]
 
     # normalize phones
-    df['split'] = df.apply(lambda row: normalize_phones(row['text']), axis=1)
+    df['text'] = df.apply(lambda row: normalize_phones(row['text']), axis=1)
     df.to_csv(source_dir / 'transcript_normalized.csv', index=False)
 
     df_to_kaldi(df, source_dir, target_dir)
