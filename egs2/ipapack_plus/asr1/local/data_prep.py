@@ -79,22 +79,7 @@ def get_utt_id(dataset, split, count):
     return f"aaaaa_{dataset}_{split}_{count:025d}"
 
 
-if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format="[%(asctime)s] %(levelname)s [%(name)s.%(funcName)s:%(lineno)d] %(message)s",
-        datefmt="%Y/%b/%d %H:%M:%S",
-        stream=sys.stdout
-    )
-
-    SAMPLING_RATE = 16000
-
-    parser = get_parser()
-    args = parser.parse_args()
-    min_wav_length = args.min_wav_length
-    source_dir = args.source_dir
-    data_dir = args.target_dir
-
+def generate_df(source_dir, data_dir):
     # get list of datasets in IPAPack++
     dataset_shards = list(source_dir.glob('*_shar'))
     # ex: downloads/aishell_shar -> aishell_shar
@@ -152,7 +137,7 @@ if __name__ == "__main__":
                 utt_id = get_utt_id(dataset, split, utt_count)
                 utt_count += 1
                 duration = metadata.duration
-                
+
                 lang = metadata.language
                 speaker = metadata.speaker
                 # transcript
@@ -172,11 +157,9 @@ if __name__ == "__main__":
                 path = str((dataset_path / utt_id).with_suffix('.wav'))
                 rows.append((utt_id, old_utt_id, dataset, split, shard, duration, lang, speaker, text, ipa_original, ipa_clean, path))
 
-            logging.info(f"Processing done! {len(split_datasets)-i-1}" +
+            logging.info(f"{dataset} done! {len(split_datasets)-i-1}" +
                           "datasets remaining for the split.")
 
-
-    # TODO: verify everything above works
     columns = [
         'utt_id', 'old_utt_id', 'dataset', 'split', 'shard', 'duration',
         'lang', 'speaker',
@@ -186,3 +169,39 @@ if __name__ == "__main__":
     df = pd.DataFrame(rows, columns=columns)
     df.to_csv(source_dir / 'transcript.csv', index=False)
     logging.info("saved transcripts and metadata to downloads/transcript.csv")
+    return df
+
+
+if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="[%(asctime)s] %(levelname)s [%(name)s.%(funcName)s:%(lineno)d] %(message)s",
+        datefmt="%Y/%b/%d %H:%M:%S",
+        stream=sys.stdout
+    )
+
+    SAMPLING_RATE = 16000
+
+    parser = get_parser()
+    args = parser.parse_args()
+    min_wav_length = args.min_wav_length
+    source_dir = args.source_dir
+    data_dir = args.target_dir
+
+    output = Path(source_dir / 'transcript.csv')
+    if output.exists():
+        logging.info(f"loading transcripts and metadata from {str(output)}")
+        df = pd.load_csv(output)
+    else:
+        df = generate_df(source_dir, target_dir)
+    
+    # exclude the following langs
+        # from FLEURS: 'ga_ie', 'sd_in', 'ar_eg', 'ml_in', 'lo_la', 'da_dk', 'ko_kr', 'ny_mw', 'mn_mn', 'so_so', 'my_mm'
+        # Samir et al 2024 found that the data available for
+        #   these languages unfortunately have low quality transcriptions.
+    FLEURS_EXCLUDE = {
+        'ga_ie', 'sd_in', 'ar_eg', 'ml_in', 'lo_la', 'da_dk', 'ko_kr',
+        'ny_mw', 'mn_mn', 'so_so', 'my_mm'
+    }
+    df = df[~df['split'].isin(FLEURS_EXCLUDE)]
+
