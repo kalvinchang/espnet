@@ -281,5 +281,5 @@ if __name__ == "__main__":
     logging.info("finished text normalization")
     df.to_csv(source_dir / 'transcript_normalized.csv', index=False)
 
-    df_to_kaldi(df, source_dir, target_dir)
+    df_to_kaldi(df, source_dir, data_dir)
     logging.info("finished converting to kaldi format")
