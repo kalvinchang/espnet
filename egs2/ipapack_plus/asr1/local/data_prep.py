@@ -155,7 +155,6 @@ def generate_df(source_dir, data_dir):
                 if 'shard_origin' in cut.custom:
                     shard = cut.custom['shard_origin']
                 # path to audio
-                # TODO: there should be a dash
                 path = str((dataset_path / old_utt_id).with_suffix('.flac'))
                 rows.append((utt_id, old_utt_id, dataset, split, shard, duration, lang, speaker, text, ipa_original, ipa_clean, path))
 
@@ -257,7 +256,7 @@ if __name__ == "__main__":
         df = pd.read_csv(output)
         logging.info(f"finished loading transcripts and metadata from {str(output)}")
     else:
-        df = generate_df(source_dir, target_dir)
+        df = generate_df(source_dir, data_dir)
     
     # exclude the following langs
         # from FLEURS: 'ga_ie', 'sd_in', 'ar_eg', 'ml_in', 'lo_la', 'da_dk', 'ko_kr', 'ny_mw', 'mn_mn', 'so_so', 'my_mm'
