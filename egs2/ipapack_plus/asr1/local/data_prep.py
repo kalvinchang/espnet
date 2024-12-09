@@ -154,7 +154,7 @@ def generate_df(source_dir, data_dir):
                 if 'shard_origin' in cut.custom:
                     shard = cut.custom['shard_origin']
                 # path to audio
-                path = str((dataset_path / utt_id).with_suffix('.wav'))
+                path = str((dataset_path / old_utt_id).with_suffix('.flac'))
                 rows.append((utt_id, old_utt_id, dataset, split, shard, duration, lang, speaker, text, ipa_original, ipa_clean, path))
 
             logging.info(f"{dataset} done! {len(split_datasets)-i-1}" +
@@ -187,17 +187,9 @@ def normalize_phones(transcription):
 
 
 def df_to_kaldi(df, source_dir, data_dir):
-    # preprocess into kaldi format
-    ipa_tokenizer = read_ipa()
-
     # kaldi format
     for split, split_df in tqdm(df.groupby('split')):
-        print("testing", split)
-
-        # to save time
-        if "test" not in split:
-            continue
-
+        logging.info(f"processing {split}")
         split_dir = args.target_dir / split
         split_dir.mkdir(parents=True, exist_ok=True)
         write_dir(args.source_dir, split_dir, split_df)
@@ -219,8 +211,9 @@ def write_dir(source_dir, target_dir, transcripts):
         old_utt_id = row['old_utt_id']
         # map original utt_id to new utt_id (note: not required by kaldi)
         utt_id_mapping.write(f"{old_utt_id} {utt_id}\n")
+        split = row['split']
 
-        wavscp.write(f"{utt_id} {path}\n")
+        wavscp.write(f"{utt_id} {source_dir}/{split}/{old_utt_id}.flac\n")
         text.write(f"{utt_id} {ipa}\n")
         # ESPnet does not use speaker info for ASR anymore
         utt2spk.write(f"{utt_id} aaaaa\n")
@@ -233,9 +226,10 @@ def write_dir(source_dir, target_dir, transcripts):
     text.close()
     utt2spk.close()
     utt_id_mapping.close()
+    prompt.close()
 
     logging.info(f"{target_dir}: {len(transcripts)} lines" +
-        "written to {str(target_dir)}.")
+        f"written to {str(target_dir)}.")
 
 
 if __name__ == "__main__":
