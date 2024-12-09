@@ -201,8 +201,8 @@ def write_dir(source_dir, target_dir, transcripts):
     wavscp = open(target_dir / "wav.scp", "w", encoding="utf-8")
     text = open(target_dir / "text", "w", encoding="utf-8")
     utt2spk = open(target_dir / "utt2spk", "w", encoding="utf-8")
-    utt_id_mapping = open(source_dir / "uttid_map", "w", encoding="utf-8")
-    prompt = open(source_dir / "prompt", "w", encoding="utf-8")
+    utt_id_mapping = open(target_dir / "uttid_map", "w", encoding="utf-8")
+    prompt = open(target_dir / "prompt", "w", encoding="utf-8")
 
     for _, row in transcripts.iterrows():
         utt_id, path, dataset, ipa, orthography = (row['utt_id'], row['path'],
