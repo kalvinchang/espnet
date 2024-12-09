@@ -133,7 +133,8 @@ def generate_df(source_dir, data_dir):
                 metadata = metadata[0]
 
                 # utterance level information
-                old_utt_id = metadata.recording_id
+                #   {recording_id}-{idx}-{channel}.flac
+                old_utt_id = metadata.id
                 utt_id = get_utt_id(dataset, split, utt_count)
                 utt_count += 1
                 duration = metadata.duration
@@ -154,6 +155,7 @@ def generate_df(source_dir, data_dir):
                 if 'shard_origin' in cut.custom:
                     shard = cut.custom['shard_origin']
                 # path to audio
+                # TODO: there should be a dash
                 path = str((dataset_path / old_utt_id).with_suffix('.flac'))
                 rows.append((utt_id, old_utt_id, dataset, split, shard, duration, lang, speaker, text, ipa_original, ipa_clean, path))
 
@@ -213,7 +215,8 @@ def write_dir(source_dir, target_dir, transcripts):
         utt_id_mapping.write(f"{old_utt_id} {utt_id}\n")
         split = row['split']
 
-        wavscp.write(f"{utt_id} {source_dir}/{split}/{old_utt_id}.flac\n")
+        # {source_dir}/{dataset}/{split}/{old_utt_id}.flac
+        wavscp.write(f"{utt_id} {path}\n")
         text.write(f"{utt_id} {ipa}\n")
         # ESPnet does not use speaker info for ASR anymore
         utt2spk.write(f"{utt_id} aaaaa\n")
