@@ -122,6 +122,7 @@ def generate_df(source_dir, data_dir):
                             "recording": recording
                         }
                     )
+
             # each cut is like an utterance
             for cut in tqdm(cuts, miniters=1000):
                 metadata = cut.supervisions
@@ -134,7 +135,7 @@ def generate_df(source_dir, data_dir):
 
                 # utterance level information
                 #   {recording_id}-{idx}-{channel}.flac
-                old_utt_id = metadata.id
+                old_utt_id = cut.id
                 utt_id = get_utt_id(dataset, split, utt_count)
                 utt_count += 1
                 duration = metadata.duration
@@ -191,7 +192,7 @@ def df_to_kaldi(df, source_dir, data_dir):
     # kaldi format
     for split, split_df in tqdm(df.groupby('split')):
         logging.info(f"processing {split}")
-        split_dir = args.target_dir / split
+        split_dir = data_dir / split
         split_dir.mkdir(parents=True, exist_ok=True)
         write_dir(args.source_dir, split_dir, split_df)
 
@@ -203,7 +204,7 @@ def write_dir(source_dir, target_dir, transcripts):
     text = open(target_dir / "text", "w", encoding="utf-8")
     utt2spk = open(target_dir / "utt2spk", "w", encoding="utf-8")
     utt_id_mapping = open(target_dir / "uttid_map", "w", encoding="utf-8")
-    prompt = open(target_dir / "prompt", "w", encoding="utf-8")
+    prompt = open(target_dir / "orthography", "w", encoding="utf-8")
 
     for _, row in transcripts.iterrows():
         utt_id, path, dataset, ipa, orthography = (row['utt_id'], row['path'],
