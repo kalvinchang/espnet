@@ -156,7 +156,10 @@ def generate_df(source_dir, data_dir):
                 if 'shard_origin' in cut.custom:
                     shard = cut.custom['shard_origin']
                 # path to audio
-                path = str((dataset_path / old_utt_id).with_suffix('.flac'))
+                # do not use .with_suffix('.flac') b/c kazakh2 old_utt_id's
+                # look like dataset_audio2_21_538_1.wav-0.flac
+                #   which suggests the dataset was accidentally unpacked twice
+                path = str((dataset_path / old_utt_id)) + '.flac'
                 rows.append((utt_id, old_utt_id, dataset, split, shard, duration, lang, speaker, text, ipa_original, ipa_clean, path))
 
             logging.info(f"{dataset} done! {len(split_datasets)-i-1}" +
