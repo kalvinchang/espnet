@@ -19,18 +19,8 @@ from allophant.phonetic_features import PhoneticAttributeIndexer, FeatureSet
 from allophant import language_codes
 
 
-# TODO: Remove?
-# _original_split_complex = phoneme_segmentation.split_complex_segment
-# _clicks = {"ǀ", "ǁ", "ǂ", "ǃ", "ʘ"}
-#
-# def split_complex_segment(segment: str) -> List[str]:
-#     if any(character in _clicks for character in segment):
-#         return [segment]
-#     return _original_split_complex(segment)
-#
-#
-# phoneme_segmentation.split_complex_segment = split_complex_segment
-
+# Mappings for unknown/incomplete glottocodes in DoReCo
+_DORECO_MAPPINGS = {"ana1239": "anal1239", "trin178": "trin1274"}
 
 _TIE = "͡"
 _LOWER_TIE = "͜"
@@ -45,7 +35,7 @@ def get_iso6393(
     match dataset:
         case "doreco":
             try:
-                code = glottomap_codes.get(language_code)
+                code = glottomap_codes.get(_DORECO_MAPPINGS.get(language_code, language_code))
                 if code is None:
                     code = glottomap_closest[language_code]
                     tqdm.write(
@@ -107,7 +97,7 @@ def extract_vocabulary(
             except ValueError:
                 tqdm.write(line.strip())
                 continue
-            # Workaround for inconsistent DORECO subset naming
+            # Workaround for inconsistent DoReCo subset naming
             _, language_code, dataset, _ = re.split(
                 r"_daaki_|_light_warlpiri_|_mojeno_trinitario_|_north_alta_|_",
                 utt_id,
