@@ -1,6 +1,6 @@
 seed: 11711
 freeze_param: [
-"frontend.upstream"
+  "frontend.upstream.model.feature_extractor"
 ]
 
 frontend: s3prl
@@ -12,8 +12,7 @@ frontend_conf:
 
 encoder: allophant
 encoder_conf:
-    input_size: 1024
-    phoneme_embedding_size: 640,
+    phoneme_embedding_size: 640
     composition_features:
       - stress
       - syllabic
@@ -51,15 +50,154 @@ encoder_conf:
       - raisedLarynxEjective
       - loweredLarynxImplosive
       - click
+    language_id_mapping_path: dump/raw/supported_languages.json
+    utt_id_separator: "_daaki_|_light_warlpiri_|_mojeno_trinitario_|_north_alta_|_"
     allophone_languages:
-      - pl
-      - de
+      - afr
+      - amh
+      - MIS-ana1239
+      - ara
+      - ara
+      - arp
+      - aze
+      - bab
+      - bel
+      - bul
+      - ben
+      - boa
+      - bos
+      - cat
+      - cbs
+      - cat
+      - ceb
+      - cmn
+      - ces
+      - cym
+      - ces
+      - dan
+      - ptv
+      - deu
+      - nld
+      - ell
+      - eng
+      - eng
+      - epo
+      - spa
+      - est
+      - est
+      - evn
+      - ful
+      - fin
+      - fra
+      - gle
+      - deu
+      - glg
+      - gle
+      - gow
+      - ell
+      - hau
+      - hin
+      - hrv
+      - hun
+      - ind
+      - ina
+      - ind
+      - isl
+      - ita
+      - ita
+      - jpn
+      - jje
+      - jav
+      - kat
+      - kke
+      - xas
+      - kir
+      - kaz
+      - kor
+      - tci
+      - kir
+      - MIS-ligh1234
+      - lit
+      - lao
+      - lit
+      - mri
+      - mkd
+      - mal
+      - mlt
+      - mon
+      - MIS-trin178
+      - mon
+      - mar
+      - msa
+      - mlt
+      - mya
+      - nob
+      - ngk
+      - nld
+      - ngh
+      - aqn
+      - nya
+      - orm
+      - ori
+      - fnb
+      - pan
+      - pol
+      - pol
+      - pt
+      - por
+      - rgr
+      - ron
+      - ron
+      - rus
+      - rus
+      - ruc
+      - MIS-sadu1234
+      - MIS-sanz1248
+      - svs
+      - snd
+      - slk
+      - slv
+      - slk
+      - slv
+      - sna
+      - som
+      - spa
+      - srp
+      - nsm
+      - swe
+      - sva
+      - swa
+      - swe
+      - tam
+      - tab
+      - tat
+      - tel
+      - tio
+      - poq
+      - tgk
+      - tha
+      - tur
+      - MIS-tsim1256
+      - tur
+      - ukr
+      - ukr
+      - urd
+      - uzb
+      - vra
+      - vie
+      - cy
+      - xho
+      - yor
+      - nru
+      - yue
+      - zho
+      - zul
     # phoible_path:
     # blank_offset:
     # use_allophone_layer: false
 
 model_conf:
-    ctc_weight: 0.3
+    ctc_weight: 1.0
     lsm_weight: 0.1
     length_normalized_loss: false
 

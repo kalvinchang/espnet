@@ -2,6 +2,8 @@ import math
 from typing import Dict, List, Optional, Tuple, Union
 from typeguard import typechecked
 import logging
+import re
+import json
 
 import torch
 from torch import Tensor, LongTensor
@@ -191,10 +193,25 @@ class AllophantLayers(AbsEncoder):
         phoneme_embedding_size: int,
         composition_features: List[str],
         allophone_languages: List[str],
+        language_id_mapping_path: str,
         phoible_path: Union[str, None] = None,
         blank_offset: int = 1,
         use_allophone_layer: bool = True,
+        utt_id_separator: str = "_",
     ):
+        super().__init__()
+
+        # Used by ESPnetAsrModel to identify encoders that take `utt_id` as an input
+        # Required if `use_allophone_layer` is `True`
+        # TODO: Disable if use_allophone_layer is False to reduce overhead?
+        self.requires_utt_id = True
+
+        self._separator = re.compile(utt_id_separator)
+
+        with open(language_id_mapping_path, "r", encoding="utf-8") as file:
+            self._language_map = json.load(file)
+            reverse_map = {normalized: original for original, normalized in self._language_map.items()}
+
         indexer = PhoneticAttributeIndexer(
             FeatureSet.PHOIBLE,
             phoible_path,
@@ -237,16 +254,16 @@ class AllophantLayers(AbsEncoder):
         if language_allophones is None:
             self._output_size = self._phoneme_composition_layer.output_size()
             self._allophone_layer = None
+            self._language_ids = {}
         else:
-            self._output_size = indexer.phonemes.size
+            self._language_ids = {reverse_map[language]: i for i, language in enumerate(language_allophones.languages)}
+            self._output_size = indexer.phonemes.size + blank_offset
             self._allophone_layer = AllophoneMapping(
                 self._phoneme_composition_layer.output_size(),
                 self._output_size,
                 language_allophones,
                 blank_offset
             )
-
-        super().__init__()
 
     # TODO: Only return phoneme classifier output size here?
     def output_size(self) -> int:
@@ -266,11 +283,9 @@ class AllophantLayers(AbsEncoder):
                 "which is required by the encoder"
             )
 
-        # TODO: Parse utterance_ids to language_ids
-        language_ids = utt_id
-
         output = self._phoneme_composition_layer(self._projection_layer(xs_pad), target_feature_indices)
         if self._allophone_layer is not None:
+            language_ids = torch.tensor([self._language_ids[self._separator.split(i, 2)[1]] for i in utt_id], dtype=torch.int64)
             # Assume that the allophone layer should not be used when a custom phoneme inventory is provided
             output = self._allophone_layer(output, language_ids, target_feature_indices is not None)
 
