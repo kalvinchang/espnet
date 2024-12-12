@@ -185,8 +185,36 @@ encoder_conf:
 
 model_conf:
     ctc_weight: 1.0
+    interctc_weight: 0.5
     lsm_weight: 0.1
     length_normalized_loss: false
+    aux_ctc_share_vocab: true
+    aux_ctc:
+      '0':
+          - syl
+          - son
+          - cons
+          - cont
+          - delrel
+          - lat
+          - nas
+          - strid
+          - voi
+          - sg
+          - cg
+          - ant
+          - cor
+          - distr
+          - lab
+          - hi
+          - lo
+          - back
+          - round
+          - velaric
+          - tense
+          - long
+
+aux_ctc_tasks: ["syl", "son", "cons", "cont", "delrel", "lat", "nas", "strid", "voi", "sg", "cg", "ant", "cor", "distr", "lab", "hi", "lo", "back", "round", "velaric", "tense", "long"]
 
 log_interval: 400
 num_att_plot: 0

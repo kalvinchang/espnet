@@ -3,6 +3,7 @@ from contextlib import contextmanager
 from typing import Dict, List, Optional, Tuple, Union
 
 import torch
+from torch.nn import ModuleDict
 from packaging.version import parse as V
 from typeguard import typechecked
 
@@ -195,17 +196,36 @@ class ESPnetASRModel(AbsESPnetModel):
         if ctc_weight == 0.0:
             self.ctc = None
         elif aux_ctc_share_vocab:
-            # each loss gets its own CTC
-            self.ctc = {}
+            if self.aux_ctc is None:
+                raise Exception("aux_ctc_share_vocab was set to True but no aux_ctc losses were defined")
+
+            # each loss gets its own CTC, including default text output
+            self.ctc = ModuleDict({"text": ctc})
             for idx_key in self.aux_ctc:
                 if isinstance(self.aux_ctc[idx_key], list):
+                    encoder_output_size = self.encoder.output_size()
+
+                    if ctc.ctc_type == "brctc":
+                        brctc_args = {
+                            "brctc_risk_strategy": ctc.ctc_loss.risk_strategy,
+                            "brctc_group_strategy": ctc.ctc_loss.group_strategy,
+                            "brctc_risk_factor": ctc.ctc_loss.risk_factor,
+                        }
+                    else:
+                        brctc_args = {}
+
                     for aux_data_key in self.aux_ctc[idx_key]:
-                        # TODO: get vocab size, encoder_output_size, ctc_conf
+                        # TODO: get vocab size for each CTC loss individually
                         # see https://github.com/espnet/espnet/blob/353edb72ee15041a8895cfb6098a1d40bc1a139f/espnet2/tasks/asr.py#L606
-                        self.aux_ctc[aux_data_key] = CTC(
+                        self.ctc[aux_data_key] = CTC(
                             odim=vocab_size,
                             encoder_output_size=encoder_output_size,
-                            **args.ctc_conf
+                            dropout_rate=ctc.dropout_rate,
+                            ctc_type=ctc.ctc_type,
+                            reduce=ctc.reduce,
+                            ignore_nan_grad=ctc.ctc_type == "builtin2" and ctc.ignore_nan_grad,
+                            zero_infinity=ctc.ctc_type != "gtnctc" and ctc.ctc_loss.zero_infinity,
+                            **brctc_args
                         )
                 else:
                     self.ctc[idx_key] = ctc
@@ -267,10 +287,12 @@ class ESPnetASRModel(AbsESPnetModel):
 
         # 1. Encoder
         encoder_out, encoder_out_lens = self.encode(speech, speech_lengths, utt_id=kwargs["utt_id"])
-        intermediate_outs = None
         if isinstance(encoder_out, tuple):
             intermediate_outs = encoder_out[1]
             encoder_out = encoder_out[0]
+        else:
+            # Treat encoders without intermediate outputs as having one intermediate output at layer 0
+            intermediate_outs = [(0, encoder_out)]
 
         loss_att, acc_att, cer_att, wer_att = None, None, None, None
         loss_ctc, cer_ctc = None, None
@@ -315,16 +337,15 @@ class ESPnetASRModel(AbsESPnetModel):
                                     )
                                     # backprop should be done here
                                     # do not add to accumulator to avoid memory issue
-                                    aux_loss_ic.backward()
+                                    aux_loss_ic.backward(retain_graph=True)
                                     if loss_ic is None:
-                                        loss_ic = aux_loss_ic
+                                        loss_ic = aux_loss_ic.detach()
                                     else:
-                                        loss_ic += aux_loss_ic
+                                        loss_ic += aux_loss_ic.detach()
                                     if cer_ic is None:
                                         cer_ic = aux_cer_ic
                                     else:
                                         cer_ic += aux_cer_ic
-                                    # run backprop on each loss individually to save memoryaux_loss_ic.backward()
                                 else:
                                     raise Exception(
                                         "Aux. CTC tasks were specified but no data was found"
@@ -344,10 +365,13 @@ class ESPnetASRModel(AbsESPnetModel):
                                     aux_data_lengths,
                                     aux_data_key
                                 )
+                                # backprop should be done here
+                                # do not add to accumulator to avoid memory issue
+                                aux_loss_ic.backward(retain_graph=True)
                                 if loss_ic is None:
-                                    loss_ic = aux_loss_ic
+                                    loss_ic = aux_loss_ic.detach()
                                 else:
-                                    loss_ic += aux_loss_ic
+                                    loss_ic += aux_loss_ic.detach()
                                 if cer_ic is None:
                                     cer_ic = aux_cer_ic
                                 else:
@@ -364,6 +388,8 @@ class ESPnetASRModel(AbsESPnetModel):
                     loss_ic, cer_ic = self._calc_ctc_loss(
                         intermediate_out, encoder_out_lens, text, text_lengths
                     )
+                    # Backprop here for consistency with other aux CTC losses
+                    loss_ic.backward(retain_graph=True)
                     # TODO: not sure if loss_ic can be None after aux_ctc
                     layer_interctc_loss_count += 1
                 # Collect Intermediate CTC stats
@@ -381,7 +407,7 @@ class ESPnetASRModel(AbsESPnetModel):
 
             # note: len(losses_interctc) != len(intermediate_outs)
             #   when the same layer is used for multiple intermediate losses
-            loss_interctc = loss_interctc / num_interctc_losses
+            loss_interctc = loss_interctc / interctc_loss_count
 
             # calculate whole encoder loss
 
@@ -700,13 +726,13 @@ class ESPnetASRModel(AbsESPnetModel):
         encoder_out_lens: torch.Tensor,
         ys_pad: torch.Tensor,
         ys_pad_lens: torch.Tensor,
-        ctc_key: str = None
+        ctc_key: Optional[str] = None
     ):
-        if ctc_key is None:
+        if not self.aux_ctc_share_vocab:
             # Calc CTC loss
             loss_ctc = self.ctc(encoder_out, encoder_out_lens, ys_pad, ys_pad_lens)
         else:
-            loss_ctc = self.ctc[ctc_key](encoder_out, encoder_out_lens, ys_pad, ys_pad_lens)
+            loss_ctc = self.ctc["text" if ctc_key is None else ctc_key](encoder_out, encoder_out_lens, ys_pad, ys_pad_lens)
 
         # Calc CER using CTC
         cer_ctc = None
