@@ -1,0 +1,218 @@
+seed: 11711
+freeze_param: [
+  "frontend.upstream.model.feature_extractor"
+]
+
+frontend: s3prl
+frontend_conf:
+    frontend_conf:
+        upstream: xls_r_300m
+    download_dir: ./hub
+    multilayer_feature: True
+
+encoder: allophant
+encoder_conf:
+    phoneme_embedding_size: 640
+    feature_type: panphon
+    use_allophone_layer: false
+    composition_features:
+      - syl
+      - son
+      - cons
+      - cont
+      - delrel
+      - lat
+      - nas
+      - strid
+      - voi
+      - sg
+      - cg
+      - ant
+      - cor
+      - distr
+      - lab
+      - hi
+      - lo
+      - back
+      - round
+      - velaric
+      - tense
+      - long
+    language_id_mapping_path: dump/raw/supported_languages.json
+    utt_id_separator: "_daaki_|_light_warlpiri_|_mojeno_trinitario_|_north_alta_|_"
+    allophone_languages:
+      - afr
+      - amh
+      - MIS-ana1239
+      - ara
+      - ara
+      - arp
+      - aze
+      - bab
+      - bel
+      - bul
+      - ben
+      - boa
+      - bos
+      - cat
+      - cbs
+      - cat
+      - ceb
+      - cmn
+      - ces
+      - cym
+      - ces
+      - dan
+      - ptv
+      - deu
+      - nld
+      - ell
+      - eng
+      - eng
+      - epo
+      - spa
+      - est
+      - est
+      - evn
+      - ful
+      - fin
+      - fra
+      - gle
+      - deu
+      - glg
+      - gle
+      - gow
+      - ell
+      - hau
+      - hin
+      - hrv
+      - hun
+      - ind
+      - ina
+      - ind
+      - isl
+      - ita
+      - ita
+      - jpn
+      - jje
+      - jav
+      - kat
+      - kke
+      - xas
+      - kir
+      - kaz
+      - kor
+      - tci
+      - kir
+      - MIS-ligh1234
+      - lit
+      - lao
+      - lit
+      - mri
+      - mkd
+      - mal
+      - mlt
+      - mon
+      - MIS-trin178
+      - mon
+      - mar
+      - msa
+      - mlt
+      - mya
+      - nob
+      - ngk
+      - nld
+      - ngh
+      - aqn
+      - nya
+      - orm
+      - ori
+      - fnb
+      - pan
+      - pol
+      - pol
+      - pt
+      - por
+      - rgr
+      - ron
+      - ron
+      - rus
+      - rus
+      - ruc
+      - MIS-sadu1234
+      - MIS-sanz1248
+      - svs
+      - snd
+      - slk
+      - slv
+      - slk
+      - slv
+      - sna
+      - som
+      - spa
+      - srp
+      - nsm
+      - swe
+      - sva
+      - swa
+      - swe
+      - tam
+      - tab
+      - tat
+      - tel
+      - tio
+      - poq
+      - tgk
+      - tha
+      - tur
+      - MIS-tsim1256
+      - tur
+      - ukr
+      - ukr
+      - urd
+      - uzb
+      - vra
+      - vie
+      - cy
+      - xho
+      - yor
+      - nru
+      - yue
+      - zho
+      - zul
+    # phoible_path:
+    # blank_offset:
+
+model_conf:
+    ctc_weight: 1.0
+    lsm_weight: 0.1
+    length_normalized_loss: false
+
+log_interval: 400
+num_att_plot: 0
+num_workers: 4
+sort_in_batch: descending
+sort_batch: descending
+batch_type: numel
+batch_bins: 16000000
+accum_grad: 4
+max_epoch: 70
+patience: none
+init: xavier_uniform
+best_model_criterion:
+-   - valid
+    - acc
+    - max
+keep_nbest_models: 10
+
+use_amp: true
+cudnn_deterministic: false
+cudnn_benchmark: false
+
+optim: adam
+optim_conf:
+    lr: 0.002
+    weight_decay: 0.000001
+scheduler: warmuplr
+scheduler_conf:
+    warmup_steps: 15000

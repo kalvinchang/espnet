@@ -8,7 +8,11 @@ import json
 import torch
 from torch import Tensor, LongTensor
 from torch import nn
-from allophant.phonetic_features import LanguageAllophoneMappings, PhoneticAttributeIndexer, FeatureSet
+from allophant.phonetic_features import (
+    LanguageAllophoneMappings,
+    PhoneticAttributeIndexer,
+    FeatureSet,
+)
 
 from espnet2.asr.encoder.abs_encoder import AbsEncoder
 
@@ -62,7 +66,9 @@ class AllophoneMapping(nn.Module):
         self._index_map = {}
 
         allophone_matrix = torch.zeros(num_languages, shared_phone_count, phoneme_count)
-        for dense_index, (language_index, allophone_mapping) in enumerate(allophones.items()):
+        for dense_index, (language_index, allophone_mapping) in enumerate(
+            allophones.items()
+        ):
             language_allophone_matrix = allophone_matrix[dense_index]
             # Constructs identity mappings for BLANK in the diagonal
             language_allophone_matrix[range(blank_offset), range(blank_offset)] = 1
@@ -70,15 +76,21 @@ class AllophoneMapping(nn.Module):
             self._index_map[languages[language_index]] = dense_index
             for phoneme, allophones in allophone_mapping.items():
                 # Add allophone mappings with the blank offset
-                language_allophone_matrix[torch.tensor(allophones) + blank_offset, phoneme + blank_offset] = 1
+                language_allophone_matrix[
+                    torch.tensor(allophones) + blank_offset, phoneme + blank_offset
+                ] = 1
 
         # Shared allophone_matrix
         self._allophone_matrices = nn.Parameter(allophone_matrix)
 
         # Initialization for the l2 penalty according to "Universal Phone Recognition With a Multilingual Allophone Systems" by Li et al.
-        self.register_buffer("_initialization", allophone_matrix.clone(), persistent=False)
+        self.register_buffer(
+            "_initialization", allophone_matrix.clone(), persistent=False
+        )
         # Inverse mask for language specific phoneme inventories
-        self.register_buffer("_allophone_mask", ~allophone_matrix.bool(), persistent=False)
+        self.register_buffer(
+            "_allophone_mask", ~allophone_matrix.bool(), persistent=False
+        )
 
     @property
     def index_map(self) -> Dict[str, int]:
@@ -87,7 +99,9 @@ class AllophoneMapping(nn.Module):
     def map_allophones(self, phone_logits: Tensor, language_ids: Tensor) -> Tensor:
         # Batch size x Shared Phoneme Inventory Size
         batch_matrices = torch.empty(
-            *phone_logits.shape[:2], self._allophone_matrices.shape[2], device=phone_logits.device
+            *phone_logits.shape[:2],
+            self._allophone_matrices.shape[2],
+            device=phone_logits.device,
         )
         for index, language_id in enumerate(map(int, language_ids)):
             logits = phone_logits[:, index].unsqueeze(-1)
@@ -103,7 +117,9 @@ class AllophoneMapping(nn.Module):
 
         return batch_matrices
 
-    def forward(self, phone_logits: Tensor, language_ids: Tensor, predict: bool = False) -> Tensor:
+    def forward(
+        self, phone_logits: Tensor, language_ids: Tensor, predict: bool = False
+    ) -> Tensor:
         # Note that while predictions on the training corpus could still be valid with the allophone layer enabled,
         # language IDs are different for other corpora and therefore not supported
         if predict:
@@ -118,7 +134,9 @@ class AllophoneMapping(nn.Module):
             weights or 0 if no allophone layer is present in the architecture
         """
         # Calculates the matrix L2 (Frobenius) norm for each allophone matrix and then sums the norms over languages
-        return torch.norm_except_dim(self._allophone_matrices - self._initialization, dim=0).sum()
+        return torch.norm_except_dim(
+            self._allophone_matrices - self._initialization, dim=0
+        ).sum()
 
 
 class EmbeddingCompositionLayer(nn.Module):
@@ -131,6 +149,7 @@ class EmbeddingCompositionLayer(nn.Module):
         “Hierarchical Phone Recognition with Compositional Phonetics.”
         Interspeech (2021).
     """
+
     _feature_table: Tensor
     _category_offsets: Tensor
 
@@ -142,7 +161,10 @@ class EmbeddingCompositionLayer(nn.Module):
         # Add Single blank embedding
         num_categories = torch.cat((LongTensor([0]), feature_table.max(0).values)) + 1
         unused_categories = torch.cat(
-            (torch.tensor([False]), torch.cat([row.bincount() for row in feature_table.T]) == 0)
+            (
+                torch.tensor([False]),
+                torch.cat([row.bincount() for row in feature_table.T]) == 0,
+            )
         )
 
         unused_count = unused_categories.sum().item()
@@ -152,7 +174,9 @@ class EmbeddingCompositionLayer(nn.Module):
         # Offsets and one additional entry for the special blank feature
         category_offsets = num_categories.cumsum(0)[:-1].unsqueeze(0)
         feature_table += category_offsets
-        self._attribute_embeddings = nn.EmbeddingBag(int(num_categories.sum()), embedding_size, mode="sum")
+        self._attribute_embeddings = nn.EmbeddingBag(
+            int(num_categories.sum()), embedding_size, mode="sum"
+        )
 
         # Set unused attribute embedding weights to 0
         with torch.no_grad():
@@ -161,12 +185,16 @@ class EmbeddingCompositionLayer(nn.Module):
         self.register_buffer("_feature_table", feature_table, persistent=False)
         self.register_buffer("_category_offsets", category_offsets, persistent=False)
         # Scale factor for the dot product with feature embeddings as in Li et al. (2021)
-        self.register_buffer("_scale_factor", torch.tensor(math.sqrt(embedding_size)), persistent=False)
+        self.register_buffer(
+            "_scale_factor", torch.tensor(math.sqrt(embedding_size)), persistent=False
+        )
 
     def output_size(self) -> int:
         return self._output_size
 
-    def forward(self, inputs: Tensor, target_feature_indices: Tensor | None = None) -> Tensor:
+    def forward(
+        self, inputs: Tensor, target_feature_indices: Tensor | None = None
+    ) -> Tensor:
         if target_feature_indices is None:
             target_feature_indices = self._feature_table
         else:
@@ -175,7 +203,11 @@ class EmbeddingCompositionLayer(nn.Module):
         composed_embeddings = torch.cat(
             (
                 # Blank embedding (Using the index batch sequence equivalent to [[0]])
-                self._attribute_embeddings(torch.zeros(1, 1, dtype=target_feature_indices.dtype, device=inputs.device)),
+                self._attribute_embeddings(
+                    torch.zeros(
+                        1, 1, dtype=target_feature_indices.dtype, device=inputs.device
+                    )
+                ),
                 # Phonemes
                 self._attribute_embeddings(target_feature_indices),
             )
@@ -185,7 +217,6 @@ class EmbeddingCompositionLayer(nn.Module):
 
 
 class AllophantLayers(AbsEncoder):
-
     @typechecked
     def __init__(
         self,
@@ -198,6 +229,7 @@ class AllophantLayers(AbsEncoder):
         blank_offset: int = 1,
         use_allophone_layer: bool = True,
         utt_id_separator: str = "_",
+        feature_type: str = "phoible",
     ):
         super().__init__()
 
@@ -210,15 +242,31 @@ class AllophantLayers(AbsEncoder):
 
         with open(language_id_mapping_path, "r", encoding="utf-8") as file:
             self._language_map = json.load(file)
-            reverse_map = {normalized: original for original, normalized in self._language_map.items()}
+            reverse_map = {
+                normalized: original
+                for original, normalized in self._language_map.items()
+            }
+
+        match feature_type:
+            case "phoible":
+                features = FeatureSet.PHOIBLE
+            case "panphon":
+                if use_allophone_layer:
+                    raise ValueError(
+                        "The allophone layer currently only supports PHOIBLE features"
+                    )
+                features = FeatureSet.PANPHON
+            case unsupported:
+                raise ValueError(f"Feature set {unsupported} if unsupported")
 
         indexer = PhoneticAttributeIndexer(
-            FeatureSet.PHOIBLE,
+            features,
             phoible_path,
             composition_features,
             language_inventories=allophone_languages,
-            allophones_from_allophoible=True,
+            allophones_from_allophoible=use_allophone_layer,
         )
+
         if use_allophone_layer:
             if indexer.allophone_data is None:
                 raise ValueError(
@@ -248,7 +296,9 @@ class AllophantLayers(AbsEncoder):
         # Projection from hidden size to the phoneme embedding size
         self._projection_layer = nn.Linear(input_size, phoneme_embedding_size)
         # Phonetic feature embedding composition for computing phoneme logits
-        self._phoneme_composition_layer = EmbeddingCompositionLayer(phoneme_embedding_size, training_features)
+        self._phoneme_composition_layer = EmbeddingCompositionLayer(
+            phoneme_embedding_size, training_features
+        )
 
         # Optional per-language allophone layer
         if language_allophones is None:
@@ -256,13 +306,16 @@ class AllophantLayers(AbsEncoder):
             self._allophone_layer = None
             self._language_ids = {}
         else:
-            self._language_ids = {reverse_map[language]: i for i, language in enumerate(language_allophones.languages)}
+            self._language_ids = {
+                reverse_map[language]: i
+                for i, language in enumerate(language_allophones.languages)
+            }
             self._output_size = indexer.phonemes.size + blank_offset
             self._allophone_layer = AllophoneMapping(
                 self._phoneme_composition_layer.output_size(),
                 self._output_size,
                 language_allophones,
-                blank_offset
+                blank_offset,
             )
 
     # TODO: Only return phoneme classifier output size here?
@@ -283,10 +336,17 @@ class AllophantLayers(AbsEncoder):
                 "which is required by the encoder"
             )
 
-        output = self._phoneme_composition_layer(self._projection_layer(xs_pad), target_feature_indices)
+        output = self._phoneme_composition_layer(
+            self._projection_layer(xs_pad), target_feature_indices
+        )
         if self._allophone_layer is not None:
-            language_ids = torch.tensor([self._language_ids[self._separator.split(i, 2)[1]] for i in utt_id], dtype=torch.int64)
+            language_ids = torch.tensor(
+                [self._language_ids[self._separator.split(i, 2)[1]] for i in utt_id],
+                dtype=torch.int64,
+            )
             # Assume that the allophone layer should not be used when a custom phoneme inventory is provided
-            output = self._allophone_layer(output, language_ids, target_feature_indices is not None)
+            output = self._allophone_layer(
+                output, language_ids, target_feature_indices is not None
+            )
 
         return output, ilens, None
