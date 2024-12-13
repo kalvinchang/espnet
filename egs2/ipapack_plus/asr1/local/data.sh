@@ -49,11 +49,13 @@ if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
 
     python3 local/data_prep.py --source_dir ${IPAPACK_PLUS} --target_dir data --min_wav_length ${min_wav_duration}
 
-    for dir in data/train data/dev data/test_fleurs data/test_doreco data/test_mswc; do
+    for dir in data/train data/dev; do
         utils/fix_data_dir.sh $dir
         utils/validate_data_dir.sh --no-feats $dir || exit 1
     done
-fi
+
+    # fix doreco separately
+    python local/fix_doreco.py
 
 if [ ${stage} -eq 2 ] && [ ${stop_stage} -ge 2 ]; then
     log "data prep stage 2: Additional data processing - This should only be called after ASR stage 4"
