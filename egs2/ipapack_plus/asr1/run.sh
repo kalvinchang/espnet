@@ -8,7 +8,7 @@ set -o pipefail
 
 train_set="train"
 valid_set="dev"
-test_sets="test_doreco"
+test_sets="test_aishell test_cv test_fleurs test_kazakh test_librispeech test_mls_dutch test_mls_french test_mls_german test_mls_italian test_mls_polish test_mls_portuguese test_mls_spanish test_tamil test_doreco"
 
 encoder=transformer
 frontend=
