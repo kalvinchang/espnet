@@ -9,7 +9,7 @@ def get_correct_path(old_path):
     return f'downloads/doreco/{lang}{old_path}'
 
 if __name__ == "__main__":
-    df = pd.read_csv("downloads/transcript.csv")
+    df = pd.read_csv("downloads/transcript_normalized.csv")
     df = df[df['dataset'] == 'doreco']
     # previous path: hardcoded /scratch/lingjzhu_root/lingjzhu1/lingjzhu/doreco/wds/ana1239/0225_DoReCo_doreco_anal1239_anm_20160318_Thst_Thumhring_Thangwar_2_folk_story_431-0
     # new path: downloads/doreco/ana1239/ + the current path
