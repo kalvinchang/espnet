@@ -1,6 +1,7 @@
 import logging
 from contextlib import contextmanager
 from typing import Dict, List, Optional, Tuple, Union
+import json
 
 import torch
 from torch.nn import ModuleDict
@@ -55,7 +56,7 @@ class ESPnetASRModel(AbsESPnetModel):
         ctc: CTC,
         joint_network: Optional[torch.nn.Module],
         aux_ctc: Optional[dict] = None,
-        aux_ctc_share_vocab: Optional[bool] = False,
+        aux_ctc_share_vocab: Optional[str] = None,
         ctc_weight: float = 0.5,
         interctc_weight: float = 0.0,
         ignore_id: int = -1,
@@ -195,9 +196,13 @@ class ESPnetASRModel(AbsESPnetModel):
         self.aux_ctc_share_vocab = aux_ctc_share_vocab
         if ctc_weight == 0.0:
             self.ctc = None
-        elif aux_ctc_share_vocab:
+        elif aux_ctc_share_vocab is not None:
+            # Load individual CTC vocabularies from the given path
+            with open(aux_ctc_share_vocab, "r", encoding="utf-8") as file:
+                aux_ctc_vocab = json.load(file)
+
             if self.aux_ctc is None:
-                raise Exception("aux_ctc_share_vocab was set to True but no aux_ctc losses were defined")
+                raise Exception("aux_ctc_share_vocab was given but no aux_ctc losses were defined")
 
             # each loss gets its own CTC, including default text output
             self.ctc = ModuleDict({"text": ctc})
@@ -215,10 +220,9 @@ class ESPnetASRModel(AbsESPnetModel):
                         brctc_args = {}
 
                     for aux_data_key in self.aux_ctc[idx_key]:
-                        # TODO: get vocab size for each CTC loss individually
-                        # see https://github.com/espnet/espnet/blob/353edb72ee15041a8895cfb6098a1d40bc1a139f/espnet2/tasks/asr.py#L606
+                        # Get vocab size for each CTC loss individually
                         self.ctc[aux_data_key] = CTC(
-                            odim=vocab_size,
+                            odim=len(aux_ctc_vocab[aux_data_key]),
                             encoder_output_size=encoder_output_size,
                             dropout_rate=ctc.dropout_rate,
                             ctc_type=ctc.ctc_type,

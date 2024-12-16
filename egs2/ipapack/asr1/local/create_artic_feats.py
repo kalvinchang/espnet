@@ -1,4 +1,5 @@
 import argparse
+import json
 
 from panphon import FeatureTable
 from tqdm import tqdm
@@ -12,17 +13,23 @@ if __name__ == "__main__":
         type=str,
         help="directory containing asr data",
     )
+    parser.add_argument(
+        "--dont_overwrite",
+        action="store_true",
+        help="will raise an error if the feature text files already exist",
+    )
 
     args = parser.parse_args()
     ft = FeatureTable()
     artic_feats = ft.names
+    feat_vocabularies = {feat: set() for feat in artic_feats}
 
     with open(f"{args.data_dir}/text", "r", encoding="utf-8") as in_file:
         utts = in_file.readlines()
 
         artic_feat_files = {}
         for feat in artic_feats:
-            artic_feat_files[feat] = open(f"{args.data_dir}/{feat}", "w", encoding="utf-8")
+            artic_feat_files[feat] = open(f"{args.data_dir}/{feat}", "x" if args.dont_overwrite else "w", encoding="utf-8")
 
         oov_phonemes = set()
 
@@ -47,14 +54,19 @@ if __name__ == "__main__":
 
             # use a list instead of map in case utt_id is not alphabetical
             for feat in artic_feats:
-                artic_feat_files[feat].write(f"{utt_id} {' '.join(utt_featlist[feat])}\n")
-
+                feats = utt_featlist[feat]
+                feat_vocabularies[feat].update(feats)
+                artic_feat_files[feat].write(f"{utt_id} {' '.join(feats)}\n")
 
         # write in batches to make it less I/O intensive
         print("writing")
         for feat in tqdm(artic_feats):
             writer = artic_feat_files[feat]
             writer.close()
+
+        with open(f"{args.data_dir}/feature_values.json", "x" if args.dont_overwrite else "w", encoding="utf-8") as file:
+            # Sort vocabularies for consistency
+            json.dump({feat: sorted(vocabulary) for feat, vocabulary in feat_vocabularies.items()}, file)
 
         if len(oov_phonemes) > 0:
             print(len(oov_phonemes), "OOV phonemes not covered by panphon:")

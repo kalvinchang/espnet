@@ -188,7 +188,7 @@ model_conf:
     interctc_weight: 0.5
     lsm_weight: 0.1
     length_normalized_loss: false
-    aux_ctc_share_vocab: true
+    aux_ctc_share_vocab: "dump/raw/train/feature_values.json"
     aux_ctc:
       '0':
           - syl
