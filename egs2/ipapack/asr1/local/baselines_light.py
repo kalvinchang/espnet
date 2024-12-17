@@ -2,203 +2,198 @@ import os
 import json
 import argparse
 import logging
-
 import torch
+
 from torch import nn
-from torch.nn import CTCLoss
-from torch.optim import Adam
-from torch.optim.lr_scheduler import LambdaLR
-import torch.nn.functional as F
-from torchaudio.models.decoder import ctc_decoder
+from torch.nn.functional import log_softmax, ctc_loss
+from torch.nn.utils.rnn import pad_sequence
+from torch.optim import AdamW
 from torch.utils.data import DataLoader
 
+from torchmetrics.text import WordErrorRate, CharErrorRate
+from torchmetrics.aggregation import MeanMetric
+
+from transformers import AutoModel, Wav2Vec2FeatureExtractor, get_linear_schedule_with_warmup
+
 from pytorch_lightning import LightningModule, Trainer, seed_everything
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from pytorch_lightning.loggers import TensorBoardLogger
-from pytorch_lightning.callbacks import EarlyStopping
 
-from transformers import Wav2Vec2Model
-from transformers import get_linear_schedule_with_warmup
-
-import jiwer
 from dataset import IPAPack
-from collate_fn import common_collate_fn
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 def count_learnable_parameters(model):
     """Calculate the total number of learnable parameters in the model."""
-    total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    return total_params
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+def load_vocab(vocab_path):
+    """Load vocabulary mapping from a JSON file."""
+    with open(vocab_path, "r") as vocab_file:
+        return json.load(vocab_file)
+
+def collate_fn(batch, ssl_model_name):
+    """Collate function for DataLoader to process batch data."""
+    utt_ids, speech_list, text_list = [], [], []
+    for utt_id, sample in batch:
+        utt_ids.append(utt_id)
+        speech_list.append(sample["speech"])
+        text_list.append(sample["text"])
+
+    processor = Wav2Vec2FeatureExtractor.from_pretrained(ssl_model_name)
+    input_values = processor(speech_list, return_tensors="pt", sampling_rate=16000, padding=True, return_attention_mask=True)
+
+    padded_text = pad_sequence(text_list, batch_first=True, padding_value=-100)
+    text_lengths = torch.tensor([len(t) for t in text_list], dtype=torch.long)
+
+    return utt_ids, {
+        "input_values": input_values.input_values.squeeze(0),
+        "input_lengths": input_values.attention_mask.sum(dim=1),
+        "target": padded_text,
+        "target_lengths": text_lengths,
+    }
+
 
 class SSLWithTransformersModel(LightningModule):
-    def __init__(self, ssl_model_name, num_classes, lr, vocab_path, warmup_fraction=0.05):
-        super(SSLWithTransformersModel, self).__init__()
+    def __init__(
+            self,
+            ssl_model_name: str,
+            num_layers: int,
+            lr: float,
+            weight_decay: float,
+            vocab_path: str,
+            attach_tf: bool = True,
+            warmup_fraction: float = 0.05,
+        ):
+        super().__init__()
         self.save_hyperparameters()
-        self.model = Wav2Vec2Model.from_pretrained(ssl_model_name)
-        for param in self.model.parameters():  # Freeze Wav2Vec2 layers
-            param.requires_grad = False
+        self.vocab = load_vocab(vocab_path)
+        self.int_to_char = {int(idx): char for char, idx in self.vocab.items()}
+        self.model = AutoModel.from_pretrained(ssl_model_name)
+
+        self.blank = 0
+        assert self.blank not in self.vocab.keys()
 
         feature_dim = self.model.config.hidden_size
-        transformer_layer = nn.TransformerEncoderLayer(
-            d_model=feature_dim, nhead=8, dim_feedforward=feature_dim
-        )
-        self.transformers = nn.TransformerEncoder(transformer_layer, num_layers=12)
-        self.fc = nn.Linear(feature_dim, num_classes)
+        self.prediction_head = nn.Linear(feature_dim, len(self.vocab))
 
-        self.ctc_loss = CTCLoss(blank=0)  # Blank token index is 0
+        if attach_tf:
+            for param in self.model.parameters():
+                param.requires_grad = False
+            self.transformers = nn.TransformerEncoder(
+                nn.TransformerEncoderLayer(d_model=feature_dim, nhead=8, dim_feedforward=feature_dim),
+                num_layers=num_layers)
+        else:
+            self.transformers = lambda x: x
+
         self.lr = lr
-        self.warmup_fraction = warmup_fraction  # Fraction of warmup steps
+        self.wd = weight_decay
+        self.warmup_fraction = warmup_fraction
 
-        # Load vocabulary
-        with open(vocab_path, "r") as f:
-            self.vocab = json.load(f)
-        self.int_to_char = {v: k for k, v in self.vocab.items()}
-        vocab_list = list(self.vocab.keys())
-
-        self.ctc_decoder = ctc_decoder(
-            lexicon=None,  
-            tokens=vocab_list, 
-            lm=None, 
-            nbest=1,  
-            beam_size=args.beam_size,  
-            blank_token="[PAD]",
-            sil_token=" ", 
-            unk_word="[UNK]",
-        )
+        self.per = WordErrorRate()
+        self.cer = CharErrorRate()
+        self.loss_acc = MeanMetric()
 
     def forward(self, x):
-        with torch.no_grad():
-            ssl_outputs = self.model(x)
-            features = ssl_outputs.last_hidden_state
+        ssl_outputs = self.model(x).last_hidden_state
+        return self.prediction_head(self.transformers(ssl_outputs))
 
-        transformer_out = self.transformers(features)
-        logits = self.fc(transformer_out)
-        return logits
+    def calculate_loss(self, input_values, speech_lengths, text, text_lengths):
+        logits = self(input_values)
+        log_probs = log_softmax(logits, dim=-1).permute(1, 0, 2)
 
-    def greedy_decode(self, log_probs):
-        """Greedy decoding: Argmax followed by collapsing repeated indices and removing blanks."""
-        # Predictions: (B, T) where each value is the index of the most probable class
-        predictions = torch.argmax(log_probs, dim=-1)  # (B, T)
+        total_stride = 1
+        for stride in self.model.config.conv_stride:
+            total_stride *= stride
+        input_lengths = ((speech_lengths - 1) // total_stride).to(torch.long)
+        loss = ctc_loss(
+            log_probs, text, input_lengths, text_lengths,
+            reduction="none", blank=self.blank,
+        ) / text_lengths
 
-        decoded_texts = []
-        for pred in predictions:
-            decoded_text = []
-            last_idx = None
-            for idx in pred:
-                idx = idx.item()
-                if idx != 0 and idx != last_idx:  # Skip blank (index 0) and repeated tokens
-                    decoded_text.append(self.int_to_char[idx])
-                last_idx = idx
-            decoded_texts.append(" ".join(decoded_text))
-        return decoded_texts
+        return log_probs, input_lengths, loss
 
-    def beam_search_decode(self, log_probs):
-        """Beam search decoding using CTCDecoder."""
-        if log_probs.device.type != "cpu":
-            log_probs = log_probs.cpu().contiguous()
+    def training_step(self, batch):
+        _, inputs = batch
+        _, _, loss = self.calculate_loss(
+            inputs["input_values"], inputs["input_lengths"],
+            inputs["target"], inputs["target_lengths"]
+        )
+        self.log("train_loss", loss.mean(), on_step=True, prog_bar=True)
+        return loss.mean()
 
-        # Decode using the CTCDecoder
-        beam_results = self.ctc_decoder(log_probs)
+    def _no_decode(self, tokens: torch.LongTensor):
+        return " ".join([
+            self.int_to_char[token.item()] if token.item() != self.blank else "_" 
+            for token in tokens
+        ])
 
-        decoded_texts = []
-        for sample in beam_results:
-            # Process n-best results for each sample
-            for hyp in sample:
-                decoded_text = " ".join(self.int_to_char[idx.item()] for idx in hyp.tokens if idx.item() != 0)
-                decoded_texts.append(decoded_text)
-        return decoded_texts
+    def _greedy_decode(self, tokens: torch.LongTensor):
+        tokens = torch.unique_consecutive(tokens)
+        return " ".join([
+            self.int_to_char[token.item()]
+            for token in tokens if token.item() != self.blank
+        ])
 
-    def training_step(self, batch, batch_idx):
-        # batch is (utt_ids, dict_of_tensors)
-        utt_ids, inputs = batch
-        speech = inputs["speech"]                # (B, T_speech)
-        speech_lengths = inputs["speech_lengths"]# (B,)
-        text = inputs["text"]                    # (B, T_label)
-        text_lengths = inputs["text_lengths"]    # (B,)
+    def decode(self, indices, lengths, method="greedy"):
+        _decode = {"greedy": self._greedy_decode, "no_decode": self._no_decode}[method]
+        return [
+            _decode(tokens[:length])
+            for tokens, length in zip(indices, lengths)
+        ]
 
-        logits = self.forward(speech)
-        log_probs = nn.functional.log_softmax(logits, dim=-1).permute(1, 0, 2)
-        output_lengths = torch.tensor([logits.size(1)] * logits.size(0), dtype=torch.long, device=logits.device)
-        loss = self.ctc_loss(log_probs, text, output_lengths, text_lengths)
+    def validation_step(self, batch):
+        _, inputs = batch
+        log_probs, log_prob_length, loss = self.calculate_loss(
+            inputs["input_values"], inputs["input_lengths"],
+            inputs["target"], inputs["target_lengths"]
+        )
 
-        self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
-        return loss
-    
-    def validation_step(self, batch, batch_idx):
-        utt_ids, inputs = batch
-        speech = inputs["speech"]                # (B, T)
-        raw_speech_lengths = inputs["speech_lengths"]  # Actual sequence lengths (B,)
-        text = inputs["text"]
-        text_lengths = inputs["text_lengths"]
+        # log_probs: (T, B, C), log_prob_length: (B, )
+        pred_ids = log_probs.argmax(dim=-1).permute(1, 0).detach().cpu()
+        pred_texts = self.decode(pred_ids, log_prob_length)
+        target_texts = self.decode(inputs["target"], inputs["target_lengths"])
 
-        # Forward pass
-        logits = self.forward(speech)  # (B, T_out, C)
-        log_probs = nn.functional.log_softmax(logits, dim=-1).permute(1, 0, 2)
-        output_lengths = torch.tensor([logits.size(1)] * logits.size(0), dtype=torch.long, device=logits.device)
-        loss = self.ctc_loss(log_probs, text, output_lengths, text_lengths)
+        pred_texts_cer = [text.replace(" ", "") for text in pred_texts]
+        target_texts_cer = [text.replace(" ", "") for text in target_texts]
 
-        pred_texts_greedy = self.greedy_decode(log_probs)
-        pred_texts_beam = self.beam_search_decode(log_probs)
-
-        # Calculate PER and CER
-        for pred, target in zip(pred_texts_greedy, text.cpu().numpy()):
-            # print(target)
-            target_text = " ".join([self.int_to_char.get(idx, "[UNK]") for idx in target if idx != -32768])
-            per_greedy = jiwer.wer(target_text, pred)
-            cer_greedy = jiwer.cer(target_text, pred)
-            # print(f"target: {target_text}")
-            # print(f"pred(greedy): {pred}")
-            # print("")
-
-        for pred, target in zip(pred_texts_beam, text.cpu().numpy()):
-            target_text = " ".join([self.int_to_char.get(idx, "[UNK]") for idx in target if idx != -32768])
-            pred = pred.replace("|", "")
-            # print(f"target: {target_text}")
-            # print(f"pred(beam): {pred}")
-            per_beam = jiwer.wer(target_text, pred)
-            cer_beam = jiwer.cer(target_text, pred)
-            # print("")
-
-        # Log metrics
-        self.log("val_loss", loss, prog_bar=True, logger=True)
-        self.log("val_per_greedy", per_greedy, prog_bar=True, logger=True)
-        self.log("val_per_beam", per_beam, prog_bar=True, logger=True)
-        self.log("val_cer_greedy", cer_greedy, prog_bar=True, logger=True)
-        self.log("val_cer_beam", cer_beam, prog_bar=True, logger=True)
-        print(f"val_loss: {loss}, PER (greedy): {per_greedy}, PER (beam): {per_beam}")
-        return {"val_loss": loss, "val_wer_greedy": per_greedy, "val_wer_beam": per_beam, "val_cer_greedy": cer_greedy, "val_cer_beam": cer_beam}
-
+        self.per(pred_texts, target_texts)
+        self.cer(pred_texts_cer, target_texts_cer)
+        self.log("val_per", self.per, prog_bar=True, on_step=False, on_epoch=True)
+        self.log("val_cer", self.cer, prog_bar=True, on_step=False, on_epoch=True)
+        self.loss_acc(loss.detach())
+        self.log("val_loss", self.loss_acc, prog_bar=True, on_step=False, on_epoch=True)
 
     def configure_optimizers(self):
-            optimizer = Adam(self.parameters(), lr=self.lr)
-            total_steps = self.trainer.estimated_stepping_batches
-            warmup_steps = int(self.warmup_fraction * total_steps)
-            scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_steps, num_training_steps=total_steps)
-            print(warmup_steps)
-            return {"optimizer": optimizer, "lr_scheduler": {"scheduler": scheduler, "interval": "step"}}
+        optimizer = AdamW(self.parameters(), lr=self.lr, weight_decay=self.wd)
+        warmup_steps = int(self.warmup_fraction * self.trainer.estimated_stepping_batches)
+        scheduler = get_linear_schedule_with_warmup(optimizer, warmup_steps, self.trainer.estimated_stepping_batches)
+        return {"optimizer": optimizer, "lr_scheduler": {"scheduler": scheduler, "interval": "step"}}
 
-
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--base_path", type=str, required=True,  default="/ocean/projects/cis210027p/eyeo1/workspace/espnet/egs2/ipapack/asr1/local")
-    parser.add_argument("--vocab_path", type=str, required=True, help="Path to vocab.json")
-    parser.add_argument("--ssl_model_name", type=str, default="facebook/wav2vec2-base-960h")
-    parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--base_path", type=str, required=True)
+    parser.add_argument("--vocab_path", type=str, required=True)
+    parser.add_argument("--ssl_model_name", type=str, default="facebook/wav2vec2-xls-r-300m")
+    parser.add_argument("--lr", type=float, default=0.001)
+    parser.add_argument("--weight_decay", type=float, default=0.01)
+    parser.add_argument("--num_layers", type=int, default=12)
     parser.add_argument("--accumulation_steps", type=int, default=1)
-    parser.add_argument("--max_audio_duration", type=float, default=15.0)
+    parser.add_argument("--max_audio_duration", type=float, default=20)
     parser.add_argument("--batch_size", type=int, default=4)
-    parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--max_epochs", type=int, default=10)
-    parser.add_argument("--beam_size", type=int, default=5)
+    parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--debug", action="store_true")
-    parser.add_argument("--debug_size", type=int, default=100)
+    parser.add_argument("--debug_size", type=int)
     args = parser.parse_args()
 
     seed_everything(42)
 
     train_dataset = IPAPack(
+        data_path = args.base_path,
         scp_file=os.path.join(args.base_path, "data/train_wav.scp"),
         text_file=os.path.join(args.base_path, "data/train_text"),
         utt2dur_file=os.path.join(args.base_path, "data/train_utt2dur"),
@@ -208,6 +203,7 @@ if __name__ == "__main__":
         debug_size=args.debug_size,
     )
     dev_dataset = IPAPack(
+        data_path = args.base_path,
         scp_file=os.path.join(args.base_path, "data/dev_wav.scp"),
         text_file=os.path.join(args.base_path, "data/dev_text"),
         utt2dur_file=os.path.join(args.base_path, "data/dev_utt2dur"),
@@ -222,52 +218,26 @@ if __name__ == "__main__":
         batch_size=args.batch_size,
         shuffle=True,
         num_workers=args.num_workers,
-        collate_fn=common_collate_fn,
+        collate_fn=lambda batch: collate_fn(batch, args.ssl_model_name)
     )
     val_loader = DataLoader(
         dev_dataset,
         batch_size=args.batch_size,
         shuffle=False,
         num_workers=args.num_workers,
-        collate_fn=common_collate_fn,
+        collate_fn=lambda batch: collate_fn(batch, args.ssl_model_name)
     )
 
-    with open("vocab.json", "r") as f:
-        vocab = json.load(f)
-    num_class = len(list(vocab.keys()))
-
-    # Model
-    model = SSLWithTransformersModel(
-        ssl_model_name=args.ssl_model_name,
-        num_classes=num_class,
-        lr=args.lr,
-        vocab_path=args.vocab_path,
-        warmup_fraction=0.05 
-    )
-
-    learnable_params = count_learnable_parameters(model)
-    print(f"Total Learnable Parameters: {learnable_params}")
-
-    # Logging and Checkpoints
-    logger = TensorBoardLogger("logs", name="fine_tune_xlsr_final_layer")
-    checkpoint_callback = ModelCheckpoint(
-        monitor="val_loss", save_top_k=3, mode="min", filename="checkpoint-{epoch:02d}-{val_loss:.2f}"
-    )
-
-    early_stopping_callback = EarlyStopping(
-        monitor="val_loss",
-        patience=3,
-        mode="min",
-        verbose=True
-    )
+    model = SSLWithTransformersModel(args.ssl_model_name, args.num_layers, args.lr, args.weight_decay, args.vocab_path)
+    logger = TensorBoardLogger("logs", name="ssl_transformers")
+    checkpoint_callback = ModelCheckpoint(monitor="val_loss", mode="min", save_top_k=3)
 
     trainer = Trainer(
-        max_epochs=args.max_epochs,
-        logger=logger,
-        callbacks=[checkpoint_callback, early_stopping_callback],
-        accumulate_grad_batches=args.accumulation_steps,
-        devices=1,
-        accelerator="gpu",
+        max_epochs=args.max_epochs, logger=logger, callbacks=[checkpoint_callback], devices=1, accelerator="gpu"
     )
 
+    print(f"Total Learnable Parameters: {count_learnable_parameters(model)}")
     trainer.fit(model, train_loader, val_loader)
+
+if __name__ == "__main__":
+    main()
