@@ -16,7 +16,7 @@ from torchmetrics.aggregation import MeanMetric
 from transformers import AutoModel, Wav2Vec2FeatureExtractor, get_linear_schedule_with_warmup
 
 from pytorch_lightning import LightningModule, Trainer, seed_everything
-from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
+from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
 from pytorch_lightning.loggers import TensorBoardLogger
 
 from dataset import IPAPack
@@ -56,7 +56,6 @@ def collate_fn(batch, ssl_model_name):
         "target_lengths": text_lengths,
     }
 
-
 class SSLWithTransformersModel(LightningModule):
     def __init__(
             self,
@@ -65,8 +64,8 @@ class SSLWithTransformersModel(LightningModule):
             lr: float,
             weight_decay: float,
             vocab_path: str,
-            attach_tf: bool = True,
-            warmup_fraction: float = 0.05,
+            warmup_fraction: float,
+            attach_tf: bool,
         ):
         super().__init__()
         self.save_hyperparameters()
@@ -84,9 +83,13 @@ class SSLWithTransformersModel(LightningModule):
             for param in self.model.parameters():
                 param.requires_grad = False
             self.transformers = nn.TransformerEncoder(
-                nn.TransformerEncoderLayer(d_model=feature_dim, nhead=8, dim_feedforward=feature_dim),
+                nn.TransformerEncoderLayer(d_model=feature_dim, nhead=16, dim_feedforward=4096), ## same with xls-r-300m
                 num_layers=num_layers)
         else:
+            for param in self.model.feature_extractor.parameters():
+                param.requires_grad = False  
+            for param in self.model.encoder.parameters():
+                param.requires_grad = True  
             self.transformers = lambda x: x
 
         self.lr = lr
@@ -104,11 +107,9 @@ class SSLWithTransformersModel(LightningModule):
     def calculate_loss(self, input_values, speech_lengths, text, text_lengths):
         logits = self(input_values)
         log_probs = log_softmax(logits, dim=-1).permute(1, 0, 2)
+        input_lengths = self.model._get_feat_extract_output_lengths(speech_lengths)
+        input_lengths = input_lengths.to(torch.long)
 
-        total_stride = 1
-        for stride in self.model.config.conv_stride:
-            total_stride *= stride
-        input_lengths = ((speech_lengths - 1) // total_stride).to(torch.long)
         loss = ctc_loss(
             log_probs, text, input_lengths, text_lengths,
             reduction="none", blank=self.blank,
@@ -117,13 +118,19 @@ class SSLWithTransformersModel(LightningModule):
         return log_probs, input_lengths, loss
 
     def training_step(self, batch):
-        _, inputs = batch
+        utt_id, inputs = batch
         _, _, loss = self.calculate_loss(
             inputs["input_values"], inputs["input_lengths"],
             inputs["target"], inputs["target_lengths"]
         )
-        self.log("train_loss", loss.mean(), on_step=True, prog_bar=True)
-        return loss.mean()
+        mean_loss = loss.mean()
+
+        if torch.isnan(mean_loss) or torch.isinf(mean_loss):
+            print(f"Skipping loss for utt_id: {utt_id}")
+            return None
+        
+        self.log("train_loss", mean_loss, on_step=True, prog_bar=True)
+        return mean_loss
 
     def _no_decode(self, tokens: torch.LongTensor):
         return " ".join([
@@ -167,6 +174,40 @@ class SSLWithTransformersModel(LightningModule):
         self.loss_acc(loss.detach())
         self.log("val_loss", self.loss_acc, prog_bar=True, on_step=False, on_epoch=True)
 
+    def test_step(self, batch):
+        utt_id, inputs = batch
+        log_probs, log_prob_length, loss = self.calculate_loss(
+            inputs["input_values"], inputs["input_lengths"],
+            inputs["target"], inputs["target_lengths"]
+        )
+
+        pred_ids = log_probs.argmax(dim=-1).permute(1, 0).detach().cpu()
+        pred_texts = self.decode(pred_ids, log_prob_length)
+        target_texts = self.decode(inputs["target"], inputs["target_lengths"])
+
+        pred_texts_cer = [text.replace(" ", "") for text in pred_texts]
+        target_texts_cer = [text.replace(" ", "") for text in target_texts]
+
+        self.per(pred_texts, target_texts)
+        self.cer(pred_texts_cer, target_texts_cer)
+        self.log("test_per", self.per, prog_bar=True, on_step=False, on_epoch=True)
+        self.log("test_cer", self.cer, prog_bar=True, on_step=False, on_epoch=True)
+
+        with open(f"test_output.txt", "a") as file:
+            for idx, utt in enumerate(utt_id):
+                # Calculate individual CER and PER per utterance
+                per_score = self.per(pred_texts[idx], target_texts[idx])
+                cer_score = self.cer(pred_texts_cer[idx], target_texts_cer[idx])
+
+                output_line = (
+                    f"utt_id: {utt} | target: {target_texts[idx]}\n"
+                    f"utt_id: {utt} | pred: {pred_texts[idx]}\n" 
+                    f"utt_id: {utt} | PER: {per_score:.4f} | CER: {cer_score:.4f}\n"
+                )
+                print(output_line.strip())  # Print to console
+                file.write(output_line)     # Write to file
+            file.write("\n")
+
     def configure_optimizers(self):
         optimizer = AdamW(self.parameters(), lr=self.lr, weight_decay=self.wd)
         warmup_steps = int(self.warmup_fraction * self.trainer.estimated_stepping_batches)
@@ -179,65 +220,115 @@ def main():
     parser.add_argument("--vocab_path", type=str, required=True)
     parser.add_argument("--ssl_model_name", type=str, default="facebook/wav2vec2-xls-r-300m")
     parser.add_argument("--lr", type=float, default=0.001)
+    parser.add_argument("--warmup_fraction", type=float, default=0.01)
     parser.add_argument("--weight_decay", type=float, default=0.01)
     parser.add_argument("--num_layers", type=int, default=12)
-    parser.add_argument("--accumulation_steps", type=int, default=1)
+    parser.add_argument("--attach_tf", action="store_true")
+    parser.add_argument("--accumulation_steps", type=int, default=4)
     parser.add_argument("--max_audio_duration", type=float, default=20)
     parser.add_argument("--batch_size", type=int, default=4)
     parser.add_argument("--max_epochs", type=int, default=10)
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--debug_size", type=int)
+    parser.add_argument("--inference", action="store_true")
+    parser.add_argument("--checkpoint", type=str)
     args = parser.parse_args()
+    print(args)
 
     seed_everything(42)
 
-    train_dataset = IPAPack(
-        data_path = args.base_path,
-        scp_file=os.path.join(args.base_path, "data/train_wav.scp"),
-        text_file=os.path.join(args.base_path, "data/train_text"),
-        utt2dur_file=os.path.join(args.base_path, "data/train_utt2dur"),
-        max_audio_duration=args.max_audio_duration,
-        vocab_path=args.vocab_path,
-        debug=args.debug,
-        debug_size=args.debug_size,
-    )
-    dev_dataset = IPAPack(
-        data_path = args.base_path,
-        scp_file=os.path.join(args.base_path, "data/dev_wav.scp"),
-        text_file=os.path.join(args.base_path, "data/dev_text"),
-        utt2dur_file=os.path.join(args.base_path, "data/dev_utt2dur"),
-        max_audio_duration=args.max_audio_duration,
-        vocab_path=args.vocab_path,
-        debug=args.debug,
-        debug_size=args.debug_size,
-    )
+    if not args.inference:
+        train_dataset = IPAPack(
+            data_path = args.base_path,
+            scp_file=os.path.join(args.base_path, "data/train_filtered_wav.scp"),
+            text_file=os.path.join(args.base_path, "data/train_filtered_text"),
+            utt2dur_file=os.path.join(args.base_path, "data/train_filtered_utt2dur"),
+            max_audio_duration=args.max_audio_duration,
+            vocab_path=args.vocab_path,
+            # debug=args.debug,
+            # debug_size=args.debug_size,
+        )
+        dev_dataset = IPAPack(
+            data_path = args.base_path,
+            scp_file=os.path.join(args.base_path, "data/dev_filtered_wav.scp"),
+            text_file=os.path.join(args.base_path, "data/dev_filtered_text"),
+            utt2dur_file=os.path.join(args.base_path, "data/dev_filtered_utt2dur"),
+            max_audio_duration=args.max_audio_duration,
+            vocab_path=args.vocab_path,
+            # debug=args.debug,
+            # debug_size=args.debug_size,
+        )
+        test_dataset = IPAPack(
+            data_path = args.base_path,
+            scp_file=os.path.join(args.base_path, "data/test_wav.scp"),
+            text_file=os.path.join(args.base_path, "data/test_text"),
+            utt2dur_file=os.path.join(args.base_path, "data/test_utt2dur"),
+            max_audio_duration=args.max_audio_duration,
+            vocab_path=args.vocab_path,
+            # debug=args.debug,
+            # debug_size=args.debug_size,
+        )
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=args.batch_size,
+            shuffle=True,
+            num_workers=args.num_workers,
+            collate_fn=lambda batch: collate_fn(batch, args.ssl_model_name)
+        )
+        val_loader = DataLoader(
+            dev_dataset,
+            batch_size=args.batch_size,
+            shuffle=False,
+            num_workers=args.num_workers,
+            collate_fn=lambda batch: collate_fn(batch, args.ssl_model_name)
+        )
+        test_loader = DataLoader(
+            test_dataset,
+            batch_size=args.batch_size,
+            shuffle=False,
+            num_workers=args.num_workers,
+            collate_fn=lambda batch: collate_fn(batch, args.ssl_model_name)
+        )
 
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=args.batch_size,
-        shuffle=True,
-        num_workers=args.num_workers,
-        collate_fn=lambda batch: collate_fn(batch, args.ssl_model_name)
-    )
-    val_loader = DataLoader(
-        dev_dataset,
-        batch_size=args.batch_size,
-        shuffle=False,
-        num_workers=args.num_workers,
-        collate_fn=lambda batch: collate_fn(batch, args.ssl_model_name)
-    )
-
-    model = SSLWithTransformersModel(args.ssl_model_name, args.num_layers, args.lr, args.weight_decay, args.vocab_path)
-    logger = TensorBoardLogger("logs", name="ssl_transformers")
-    checkpoint_callback = ModelCheckpoint(monitor="val_loss", mode="min", save_top_k=3)
+    model = SSLWithTransformersModel(args.ssl_model_name, args.num_layers, args.lr, args.weight_decay, args.vocab_path, args.warmup_fraction, args.attach_tf)
+    logger = TensorBoardLogger("logs", name=f"{args.ssl_model_name.split('/')[-1]}_{args.num_layers}")
+    checkpoint_callback = ModelCheckpoint(monitor="val_loss", mode="min", save_top_k=3, save_on_train_epoch_end=True, save_last=True)
+    lr_monitor = LearningRateMonitor(logging_interval='step')
+    early_stopping = EarlyStopping(monitor="val_loss", mode="min", patience=3)
 
     trainer = Trainer(
-        max_epochs=args.max_epochs, logger=logger, callbacks=[checkpoint_callback], devices=1, accelerator="gpu"
+        max_epochs=args.max_epochs, logger=logger, callbacks=[checkpoint_callback, early_stopping, lr_monitor], devices=1, accelerator="gpu",
+        accumulate_grad_batches=args.accumulation_steps, gradient_clip_val=1.0
     )
 
     print(f"Total Learnable Parameters: {count_learnable_parameters(model)}")
-    trainer.fit(model, train_loader, val_loader)
+    
+    if not args.inference:
+        # trainer.fit(model, train_loader, val_loader)
+        trainer.fit(model, train_loader, val_loader, ckpt_path=args.checkpoint)
+        trainer.test(model=model, dataloaders=test_loader, ckpt_path = checkpoint_callback.best_model_path)
+
+    if args.inference:
+        test_dataset = IPAPack(
+            data_path = args.base_path,
+            scp_file=os.path.join(args.base_path, "data/test_wav.scp"),
+            text_file=os.path.join(args.base_path, "data/test_text"),
+            utt2dur_file=os.path.join(args.base_path, "data/test_utt2dur"),
+            max_audio_duration=args.max_audio_duration,
+            vocab_path=args.vocab_path,
+            debug=args.debug,
+            debug_size=args.debug_size,
+        )
+        test_loader = DataLoader(
+            test_dataset,
+            batch_size=args.batch_size,
+            shuffle=False,
+            num_workers=args.num_workers,
+            collate_fn=lambda batch: collate_fn(batch, args.ssl_model_name)
+        )
+        
+        trainer.test(model=model, dataloaders=test_loader, ckpt_path = args.checkpoint)
 
 if __name__ == "__main__":
     main()
