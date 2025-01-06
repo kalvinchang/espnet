@@ -159,7 +159,7 @@ def generate_df(source_dir, data_dir):
                 # do not use .with_suffix('.flac') b/c kazakh2 old_utt_id's
                 # look like dataset_audio2_21_538_1.wav-0.flac
                 #   which suggests the dataset was accidentally unpacked twice
-                path = str((dataset_path / old_utt_id)) + '.flac'
+                path = f"{str(dataset_path)}/{old_utt_id}.flac"
                 rows.append((utt_id, old_utt_id, dataset, split, shard, duration, lang, speaker, text, ipa_original, ipa_clean, path))
 
             logging.info(f"{dataset} done! {len(split_datasets)-i-1}" +
@@ -199,7 +199,7 @@ def df_to_kaldi(df, source_dir, data_dir):
         logging.info(f"processing {split}")
         split_dir = data_dir / split
         split_dir.mkdir(parents=True, exist_ok=True)
-        write_dir(args.source_dir, split_dir, split_df)
+        write_dir(source_dir, split_dir, split_df)
 
 
 # adapted from https://github.com/juice500ml/espnet/blob/wav2gloss/egs2/
