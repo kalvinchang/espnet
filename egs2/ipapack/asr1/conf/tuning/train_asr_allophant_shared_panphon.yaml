@@ -13,8 +13,11 @@ frontend_conf:
 encoder: allophant
 encoder_conf:
     phoneme_embedding_size: 640
+    # Blank offset 2 to ignore <unk> token from Stage 5
+    blank_offset: 2
     feature_type: panphon
     use_allophone_layer: false
+    phoneme_inventory_file: data/token_list/word/tokens.txt
     composition_features:
       - syl
       - son
@@ -216,15 +219,15 @@ model_conf:
 
 aux_ctc_tasks: ["syl", "son", "cons", "cont", "delrel", "lat", "nas", "strid", "voi", "sg", "cg", "ant", "cor", "distr", "lab", "hi", "lo", "back", "round", "velaric", "tense", "long"]
 
-log_interval: 400
+log_interval: 200
 num_att_plot: 0
-num_workers: 4
+num_workers: 32
 sort_in_batch: descending
 sort_batch: descending
 batch_type: numel
-batch_bins: 16000000
+batch_bins: 20000000
 accum_grad: 4
-max_epoch: 70
+max_epoch: 2
 patience: none
 init: xavier_uniform
 best_model_criterion:
@@ -239,8 +242,12 @@ cudnn_benchmark: false
 
 optim: adam
 optim_conf:
-    lr: 0.002
+    lr: 0.0003
     weight_decay: 0.000001
 scheduler: warmuplr
 scheduler_conf:
-    warmup_steps: 15000
+    warmup_steps: 2500
+
+ctc_conf:
+    ignore_nan_grad: true
+    elementwise_affine: false

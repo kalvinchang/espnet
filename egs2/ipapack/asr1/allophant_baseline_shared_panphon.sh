@@ -13,7 +13,7 @@ test_sets="test_doreco test_fleurs test_mswc"
 encoder=allophant
 asr_config=conf/tuning/train_asr_${encoder}_shared_panphon.yaml
 inference_config=conf/decode_allophant.yaml
-aux_ctc="syl son cons cont delrel lat nas strid voi sg cg ant cor distr lab hi lo back round velaric tense long "
+aux_ctc="syl son cons cont delrel lat nas strid voi sg cg ant cor distr lab hi lo back round velaric tense long"
 
 
 ./asr.sh \
@@ -22,7 +22,7 @@ aux_ctc="syl son cons cont delrel lat nas strid voi sg cg ant cor distr lab hi l
     --stage 11 \
     --stop_stage 11 \
     --ngpu 1 \
-    --nj 8 \
+    --nj 32 \
     --gpu_inference true \
     --inference_nj 4 \
     --token_type word \

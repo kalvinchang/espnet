@@ -1,5 +1,6 @@
 import math
 from typing import Dict, List, Optional, Tuple, Union
+import unicodedata
 from typeguard import typechecked
 import logging
 import re
@@ -153,10 +154,13 @@ class EmbeddingCompositionLayer(nn.Module):
     _feature_table: Tensor
     _category_offsets: Tensor
 
-    def __init__(self, embedding_size: int, feature_table: Tensor) -> None:
+    def __init__(self, embedding_size: int, feature_table: Tensor, blank_offset: int = 1) -> None:
         super().__init__()
 
-        self._output_size = feature_table.shape[0] + 1
+        assert blank_offset > 0, "Blank offset must be at least 1"
+
+        self._output_size = feature_table.shape[0] + blank_offset
+        self._blank_offset = blank_offset
 
         # Add Single blank embedding
         num_categories = torch.cat((LongTensor([0]), feature_table.max(0).values)) + 1
@@ -177,6 +181,7 @@ class EmbeddingCompositionLayer(nn.Module):
         self._attribute_embeddings = nn.EmbeddingBag(
             int(num_categories.sum()), embedding_size, mode="sum"
         )
+        self._embedding_size = embedding_size
 
         # Set unused attribute embedding weights to 0
         with torch.no_grad():
@@ -200,18 +205,28 @@ class EmbeddingCompositionLayer(nn.Module):
         else:
             target_feature_indices = target_feature_indices + self._category_offsets
 
-        composed_embeddings = torch.cat(
-            (
-                # Blank embedding (Using the index batch sequence equivalent to [[0]])
-                self._attribute_embeddings(
-                    torch.zeros(
-                        1, 1, dtype=target_feature_indices.dtype, device=inputs.device
-                    )
-                ),
-                # Phonemes
-                self._attribute_embeddings(target_feature_indices),
-            )
-        ).T
+        composed = [
+            # Blank embedding (Using the index batch sequence equivalent to [[0]])
+            self._attribute_embeddings(
+                torch.zeros(
+                    1, 1, dtype=target_feature_indices.dtype, device=inputs.device
+                )
+            ),
+            # Phonemes
+            self._attribute_embeddings(target_feature_indices),
+        ]
+
+        # Insert -inf tensors to ignore special tokens between <unk> and the first phoneme
+        if self._blank_offset > 1:
+            # TODO: More efficient solution - maybe by removing <unk> from vocabulary during pre-processing
+            composed.insert(1, torch.full(
+                (self._blank_offset - 1, self._embedding_size),
+                # Minimum float 32 as padding value since -inf leads to NaN losses with log softmax and torch CTC loss
+                torch.finfo(torch.bfloat16).min,
+                device=inputs.device,
+            ))
+
+        composed_embeddings = torch.cat(composed).T
 
         return (inputs @ composed_embeddings) / self._scale_factor
 
@@ -230,8 +245,21 @@ class AllophantLayers(AbsEncoder):
         use_allophone_layer: bool = True,
         utt_id_separator: str = "_",
         feature_type: str = "phoible",
+        phoneme_inventory_file: Optional[str] = None,
     ):
         super().__init__()
+
+        # Assumes the phoneme inventory is in the form generated from stage 5
+        if phoneme_inventory_file is not None:
+            with open(phoneme_inventory_file, "r", encoding="utf-8") as file:
+                # Normalize vocabulary for feature compatibility and filter special tokens
+                phoneme_inventory = [
+                    unicodedata.normalize("NFD", line) for line in map(str.strip, file)
+                    # Ignore special tokens
+                    if not (line.startswith("<") and line.endswith(">"))
+                ]
+        else:
+            phoneme_inventory = None
 
         # Used by ESPnetAsrModel to identify encoders that take `utt_id` as an input
         # Required if `use_allophone_layer` is `True`
@@ -273,31 +301,33 @@ class AllophantLayers(AbsEncoder):
                     "Model configuration using attribute embedding composition and an allophone layer"
                     " requires allophone data in the attribute indexer with but got `None`"
                 )
+            if phoneme_inventory_file is not None:
+                raise ValueError("Using a custom phoneme inventory together with the allophone layer is unsupported")
 
-            training_attributes = indexer.allophone_data.shared_phone_indexer
+            if phoneme_inventory is None:
+                phoneme_inventory = indexer.allophone_data.shared_phone_indexer.phonemes.tolist()
             language_allophones = LanguageAllophoneMappings.from_allophone_data(
                 indexer,
                 allophone_languages,
             )
         else:
+            if phoneme_inventory is None:
+                phoneme_inventory = indexer.phonemes.tolist()
             # Use the phoneme subset from the attribute indexer with all features for constructing the embeddings
-            training_attributes = indexer.full_attributes.subset(
-                indexer.phonemes.tolist(),
-                indexer.composition_features.copy(),
-            )
             language_allophones = None
 
         # Use either the phone or the phoneme subset from the attribute indexer with all features for constructing the embeddings
-        training_features = indexer.full_attributes.subset(
-            training_attributes.phonemes.tolist(),
+        training_attributes = indexer.full_attributes.subset(
+            phoneme_inventory,
             indexer.composition_features.copy(),
-        ).dense_feature_table.long()
+        )
+        training_features = training_attributes.dense_feature_table.long()
 
         # Projection from hidden size to the phoneme embedding size
         self._projection_layer = nn.Linear(input_size, phoneme_embedding_size)
         # Phonetic feature embedding composition for computing phoneme logits
         self._phoneme_composition_layer = EmbeddingCompositionLayer(
-            phoneme_embedding_size, training_features
+            phoneme_embedding_size, training_features, blank_offset
         )
 
         # Optional per-language allophone layer
