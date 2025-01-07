@@ -32,11 +32,15 @@ class CTC(torch.nn.Module):
         brctc_risk_strategy: str = "exp",
         brctc_group_strategy: str = "end",
         brctc_risk_factor: float = 0.0,
+        elementwise_affine: bool = True,
     ):
         super().__init__()
         eprojs = encoder_output_size
+        if not elementwise_affine and dropout_rate > 0:
+            raise ValueError(f"Can't set dropout > 0 for CTC if the elementwise affine transformation is disabled, was {dropout_rate}")
+
         self.dropout_rate = dropout_rate
-        self.ctc_lo = torch.nn.Linear(eprojs, odim)
+        self.ctc_lo = torch.nn.Linear(eprojs, odim) if elementwise_affine else None
         self.ctc_type = ctc_type
         if ignore_nan_grad is not None:
             zero_infinity = ignore_nan_grad
@@ -160,7 +164,10 @@ class CTC(torch.nn.Module):
             ys_lens: batch of lengths of character sequence (B)
         """
         # hs_pad: (B, L, NProj) -> ys_hat: (B, L, Nvocab)
-        ys_hat = self.ctc_lo(F.dropout(hs_pad, p=self.dropout_rate))
+        if self.ctc_lo is None:
+            ys_hat = hs_pad
+        else:
+            ys_hat = self.ctc_lo(F.dropout(hs_pad, p=self.dropout_rate))
 
         if self.ctc_type == "brctc":
             loss = self.loss_fn(ys_hat, ys_pad, hlens, ys_lens).to(
