@@ -14,14 +14,27 @@ if __name__ == "__main__":
         help="directory containing asr data",
     )
     parser.add_argument(
+        "--feature_type",
+        default="panphon",
+        choices={"panphon", "allophoible"},
+        help="feature set to extract",
+    )
+    parser.add_argument(
         "--dont_overwrite",
         action="store_true",
         help="will raise an error if the feature text files already exist",
     )
 
     args = parser.parse_args()
-    ft = FeatureTable()
-    artic_feats = ft.names
+
+    if args.feature_type == "panphon":
+        ft = FeatureTable()
+        artic_feats = ft.names
+    else:
+        from allophant.phonetic_features import PhoneticAttributeIndexer, FeatureSet
+        ft = PhoneticAttributeIndexer(FeatureSet.PHOIBLE).full_attributes
+        artic_feats = ft.feature_names
+
     feat_vocabularies = {feat: set() for feat in artic_feats}
 
     with open(f"{args.data_dir}/text", "r", encoding="utf-8") as in_file:
@@ -43,14 +56,19 @@ if __name__ == "__main__":
             # map utt -> feat -> list of values
             utt_featlist = { feat:[] for feat in artic_feats }
             for phoneme in phonemes:
-                fts = ft.word_fts(phoneme)
-                if len(fts) == 0:
-                    oov_phonemes.add(fts)
-                    continue
+                if isinstance(ft, FeatureTable):
+                    fts = ft.word_fts(phoneme)
+                    if len(fts) == 0:
+                        oov_phonemes.add(fts)
+                        continue
 
-                segment = fts[0]
-                for feature, value in zip(artic_feats, segment.strings()):
-                    utt_featlist[feature].append(value)
+                    for feature, value in zip(artic_feats, fts[0].strings()):
+                        utt_featlist[feature].append(value)
+                else:
+                    # Get Phoible feature contours for each phoneme
+                    fts = ft.feature_vector(phoneme)
+                    for feature, values in zip(artic_feats, fts):
+                        utt_featlist[feature].extend(ft.feature_values(feature, values))
 
             # use a list instead of map in case utt_id is not alphabetical
             for feat in artic_feats:
