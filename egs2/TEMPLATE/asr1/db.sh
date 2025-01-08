@@ -61,6 +61,7 @@ HKUST2=
 HUI_ACG=downloads
 HUB4_SPANISH=
 IPAPACK=downloads
+IPAPACK_PLUS=downloads
 LABOROTV=
 TEDXJP=
 LIBRISPEECH=downloads
