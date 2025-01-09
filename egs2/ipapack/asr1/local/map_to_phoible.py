@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-import itertools
 from pathlib import Path
 import shutil
 from typing import Dict, List, Sequence
@@ -130,12 +129,7 @@ def extract_vocabulary(
             except ValueError:
                 tqdm.write(line.strip())
                 continue
-            # Workaround for inconsistent DoReCo subset naming
-            _, language_code, dataset, _ = re.split(
-                r"_daaki_|_light_warlpiri_|_mojeno_trinitario_|_north_alta_|_",
-                utt_id,
-                3,
-            )
+            _, language_code, dataset, _ = utt_id.split("_", 3)
 
             if language_code != last_language:
                 last_language = language_code
@@ -348,7 +342,7 @@ def collect_inventories(
             )
             # Workaround for inconsistent DORECO subset naming
             _, language_code, dataset, _ = re.split(
-                r"_light_warlpiri_|_daaki_|_", utt_id, 3
+                r"_", utt_id, 3
             )
 
             if language_code != last_language:

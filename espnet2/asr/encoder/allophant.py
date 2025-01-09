@@ -239,7 +239,7 @@ class AllophantLayers(AbsEncoder):
         phoneme_embedding_size: int,
         composition_features: List[str],
         allophone_languages: List[str],
-        language_id_mapping_path: str,
+        language_id_mapping_path: Optional[str] = None,
         phoible_path: Union[str, None] = None,
         blank_offset: int = 1,
         use_allophone_layer: bool = True,
@@ -268,12 +268,16 @@ class AllophantLayers(AbsEncoder):
 
         self._separator = re.compile(utt_id_separator)
 
-        with open(language_id_mapping_path, "r", encoding="utf-8") as file:
-            self._language_map = json.load(file)
-            reverse_map = {
-                normalized: original
-                for original, normalized in self._language_map.items()
-            }
+        if language_id_mapping_path is None:
+            self._language_map = None
+            reverse_map = None
+        else:
+            with open(language_id_mapping_path, "r", encoding="utf-8") as file:
+                self._language_map = json.load(file)
+                reverse_map = {
+                    normalized: original
+                    for original, normalized in self._language_map.items()
+                }
 
         match feature_type:
             case "phoible":
@@ -335,6 +339,8 @@ class AllophantLayers(AbsEncoder):
             self._output_size = self._phoneme_composition_layer.output_size()
             self._allophone_layer = None
             self._language_ids = {}
+        elif reverse_map is None:
+            raise ValueError("language_id_mapping_path must be specified when the allophone layer is enabled")
         else:
             self._language_ids = {
                 reverse_map[language]: i

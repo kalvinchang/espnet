@@ -41,8 +41,8 @@ encoder_conf:
       - velaric
       - tense
       - long
-    language_id_mapping_path: dump/raw/supported_languages.json
-    utt_id_separator: "_daaki_|_light_warlpiri_|_mojeno_trinitario_|_north_alta_|_"
+    # language_id_mapping_path: dump/raw/supported_languages.json
+    utt_id_separator: "_"
     allophone_languages:
       - afr
       - amh
