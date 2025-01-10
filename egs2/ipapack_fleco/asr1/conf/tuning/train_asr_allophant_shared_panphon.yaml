@@ -187,6 +187,7 @@ encoder_conf:
     # blank_offset:
 
 model_conf:
+    extract_feats_in_collect_stats: false
     ctc_weight: 1.0
     interctc_weight: 0.5
     lsm_weight: 0.1
