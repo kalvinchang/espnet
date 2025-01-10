@@ -741,7 +741,10 @@ class ESPnetASRModel(AbsESPnetModel):
         # Calc CER using CTC
         cer_ctc = None
         if not self.training and self.error_calculator is not None:
-            ys_hat = self.ctc.argmax(encoder_out).data
+            if not self.aux_ctc_share_vocab:
+                ys_hat = self.ctc.argmax(encoder_out).data
+            else:
+                ys_hat = self.ctc["text" if ctc_key is None else ctc_key].argmax(encoder_out).data
             cer_ctc = self.error_calculator(ys_hat.cpu(), ys_pad.cpu(), is_ctc=True)
         return loss_ctc, cer_ctc
 
