@@ -5,6 +5,7 @@ maxlenratio: 0.4
 minlenratio: 0.0
 ctc_weight: 0.0
 lm_weight: 0.0
-lang_sym: <eng>
+lang_sym: 
+# TODO: default language symbol is <eng> ?
 task_sym: <asr>
 predict_time: false
