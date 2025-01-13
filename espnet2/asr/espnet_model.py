@@ -341,7 +341,8 @@ class ESPnetASRModel(AbsESPnetModel):
                                     )
                                     # backprop should be done here
                                     # do not add to accumulator to avoid memory issue
-                                    aux_loss_ic.backward(retain_graph=True)
+                                    if self.training:
+                                        aux_loss_ic.backward(retain_graph=True)
                                     if loss_ic is None:
                                         loss_ic = aux_loss_ic.detach()
                                     else:
@@ -371,7 +372,8 @@ class ESPnetASRModel(AbsESPnetModel):
                                 )
                                 # backprop should be done here
                                 # do not add to accumulator to avoid memory issue
-                                aux_loss_ic.backward(retain_graph=True)
+                                if self.training:
+                                    aux_loss_ic.backward(retain_graph=True)
                                 if loss_ic is None:
                                     loss_ic = aux_loss_ic.detach()
                                 else:
@@ -393,7 +395,8 @@ class ESPnetASRModel(AbsESPnetModel):
                         intermediate_out, encoder_out_lens, text, text_lengths
                     )
                     # Backprop here for consistency with other aux CTC losses
-                    loss_ic.backward(retain_graph=True)
+                    if self.training:
+                        loss_ic.backward(retain_graph=True)
                     # TODO: not sure if loss_ic can be None after aux_ctc
                     layer_interctc_loss_count += 1
                 # Collect Intermediate CTC stats

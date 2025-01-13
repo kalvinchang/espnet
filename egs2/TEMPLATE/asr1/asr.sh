@@ -862,6 +862,7 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ] && ! [[ " ${skip_stages} " =~ [
     if [ -n "${post_process_local_data_opts}" ]; then
         # Do any additional local data post-processing here
         local/data.sh ${post_process_local_data_opts} --asr_data_dir "${data_feats}/${train_set}"
+        local/data.sh ${post_process_local_data_opts} --asr_data_dir "${data_feats}/${valid_set}"
     fi
 
     # shellcheck disable=SC2002,SC2068,SC2005
@@ -1381,6 +1382,7 @@ if [ ${stage} -le 11 ] && [ ${stop_stage} -ge 11 ] && ! [[ " ${skip_stages} " =~
             _opts+="--allow_variable_data_keys True "
             for aux_dset in "${aux_list[@]}"; do
                 _opts+="--train_data_path_and_name_and_type ${_asr_train_dir}/${aux_dset},${aux_dset},text "
+                _opts+="--valid_data_path_and_name_and_type ${_asr_valid_dir}/${aux_dset},${aux_dset},text "
             done
         fi
         # shellcheck disable=SC2068
