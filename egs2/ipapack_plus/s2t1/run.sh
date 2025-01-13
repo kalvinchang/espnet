@@ -9,7 +9,7 @@ train_set=train
 valid_set=dev
 test_sets=dev
 
-nbpe=20000
+nbpe=50000
 s2t_config=conf/tuning/train_s2t_ebf_conv2d_size1024_e18_d18_piecewise_lr2e-4_warmup60k_flashattn.yaml
 inference_config=conf/decode_s2t.yaml
 
@@ -23,17 +23,18 @@ inference_config=conf/decode_s2t.yaml
     --stage 11 \
     --stop_stage 11 \
     --use_lm false \
-    --num_nodes 8 \
+    --num_nodes 16 \
     --ngpu 4 \
-    --nj 128 \
+    --nj 64 \
     --gpu_inference true \
-    --inference_nj 128 \
-    --num_splits_s2t 5 \
+    --inference_nj 64 \
+    --num_splits_s2t 12 \
     --max_wav_duration 20 \
     --feats_type raw \
     --audio_format flac.ark \
     --token_type bpe \
     --nbpe ${nbpe} \
+    --bpe_input_sentence_size 15000000 \
     --s2t_config "${s2t_config}" \
     --inference_config "${inference_config}" \
     --train_set "${train_set}" \
