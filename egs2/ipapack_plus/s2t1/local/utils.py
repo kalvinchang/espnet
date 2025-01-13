@@ -15,7 +15,7 @@ SYMBOLS_TIME: List[str] = [
     "<notimestamps>",
 ]
 TASK_TOKENS: List[str] = [
-    "<asr>", "<pr>"
+    "<asr>", "<pr>", "<g2p>", "<p2g>"
 ]
 # TODO:
 LANGUAGES = {
