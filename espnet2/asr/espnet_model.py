@@ -208,7 +208,10 @@ class ESPnetASRModel(AbsESPnetModel):
             self.ctc = ModuleDict({"text": ctc})
             for idx_key in self.aux_ctc:
                 if isinstance(self.aux_ctc[idx_key], list):
-                    encoder_output_size = self.encoder.output_size()
+                    if hasattr(self.encoder, "intermediate_size"):
+                        encoder_output_size = self.encoder.intermediate_size(idx_key)
+                    else:
+                        encoder_output_size = self.encoder.output_size()
 
                     if ctc.ctc_type == "brctc":
                         brctc_args = {

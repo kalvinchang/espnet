@@ -162,11 +162,11 @@ class EmbeddingCompositionLayer(nn.Module):
         self._output_size = feature_table.shape[0] + blank_offset
         self._blank_offset = blank_offset
 
-        # Add Single blank embedding
-        num_categories = torch.cat((LongTensor([0]), feature_table.max(0).values)) + 1
+        # Add blank embedding + embeddings for every other special symbol if blank_offset > 1
+        num_categories = torch.cat((LongTensor([0] * blank_offset), feature_table.max(0).values)) + 1
         unused_categories = torch.cat(
             (
-                torch.tensor([False]),
+                torch.tensor([False] * blank_offset),
                 torch.cat([row.bincount() for row in feature_table.T]) == 0,
             )
         )
@@ -176,7 +176,7 @@ class EmbeddingCompositionLayer(nn.Module):
             logging.info(f"{unused_count} unused feature embeddings")
 
         # Offsets and one additional entry for the special blank feature
-        category_offsets = num_categories.cumsum(0)[:-1].unsqueeze(0)
+        category_offsets = num_categories.cumsum(0)[blank_offset - 1:-1].unsqueeze(0)
         feature_table += category_offsets
         self._attribute_embeddings = nn.EmbeddingBag(
             int(num_categories.sum()), embedding_size, mode="sum"
@@ -206,25 +206,15 @@ class EmbeddingCompositionLayer(nn.Module):
             target_feature_indices = target_feature_indices + self._category_offsets
 
         composed = [
-            # Blank embedding (Using the index batch sequence equivalent to [[0]])
+            # Blank + special embeddings (Using the index batch sequences equivalent to [[0], [1], ...])
             self._attribute_embeddings(
-                torch.zeros(
-                    1, 1, dtype=target_feature_indices.dtype, device=inputs.device
-                )
+                torch.arange(
+                    self._blank_offset, dtype=target_feature_indices.dtype, device=inputs.device
+                ).unsqueeze(1)
             ),
             # Phonemes
             self._attribute_embeddings(target_feature_indices),
         ]
-
-        # Insert -inf tensors to ignore special tokens between <unk> and the first phoneme
-        if self._blank_offset > 1:
-            # TODO: More efficient solution - maybe by removing <unk> from vocabulary during pre-processing
-            composed.insert(1, torch.full(
-                (self._blank_offset - 1, self._embedding_size),
-                # Minimum float 32 as padding value since -inf leads to NaN losses with log softmax and torch CTC loss
-                torch.finfo(torch.bfloat16).min,
-                device=inputs.device,
-            ))
 
         composed_embeddings = torch.cat(composed).T
 
@@ -329,6 +319,8 @@ class AllophantLayers(AbsEncoder):
 
         # Projection from hidden size to the phoneme embedding size
         self._projection_layer = nn.Linear(input_size, phoneme_embedding_size)
+        self._input_size = input_size
+
         # Phonetic feature embedding composition for computing phoneme logits
         self._phoneme_composition_layer = EmbeddingCompositionLayer(
             phoneme_embedding_size, training_features, blank_offset
@@ -365,7 +357,7 @@ class AllophantLayers(AbsEncoder):
         prev_states: Optional[Tensor] = None,
         utt_id: Optional[List[str]] = None,
         target_feature_indices: Optional[Tensor] = None,
-    ) -> Tuple[Tensor, Tensor, Optional[Tensor]]:
+    ) -> Tuple[Tuple[Tensor, Tuple[Tuple[int, Tensor], Tuple[int, Tensor]]], Tensor, Optional[Tensor]]:
         if utt_id is None:
             raise ValueError(
                 f"{self.__class__.__name__}.encode was called without utt_id, "
@@ -385,4 +377,13 @@ class AllophantLayers(AbsEncoder):
                 output, language_ids, target_feature_indices is not None
             )
 
-        return output, ilens, None
+        # Return frontend output as an intermediate output for auxiliary CTC
+        return (output, ((0, xs_pad), (1, output))), ilens, None
+
+    def intermediate_size(self, index_key: str) -> int:
+        if index_key == "0":
+            return self._input_size
+        elif index_key == "1":
+            return self._output_size
+
+        raise Exception(f"{index_key!r} is an invalid intermediate layer index for Allophant")
