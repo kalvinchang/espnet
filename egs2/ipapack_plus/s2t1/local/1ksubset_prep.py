@@ -35,13 +35,16 @@ for dataset in ["train", "dev"]:
     for file in ["text.asr", "text.ctc", "text.g2p_prev", "text.p2g_prev", "text", "text.asr_ctc", "text.g2p", "text.p2g", "text.prev"]:
         os.system(f"awk 'NR % 80 == 1' {textdir}/{dataset}/{file} > {currentdir}/texts/{file}")
     os.system(f"cp {currentdir}/texts/text {currentdir}/texts/text.na")
+    # remove the text and replace with <na> since no previous text for ASR, phoneme recognition
     os.system(f"sed -i 's/ .*/ <na>/' {currentdir}/texts/text.na")
     
     # 3. combine text files
     for file in ["text", "text.asr", "text.g2p", "text.p2g"]:
         os.system(f"cat {currentdir}/texts/{file} >> {currentdir}/text")
-    for file in ["text.prev", "text.na", "text.g2p_prev", "text.p2g_prev"]:
+    for file in ["text.na", "text.na", "text.g2p_prev", "text.p2g_prev"]:
         os.system(f"cat {currentdir}/texts/{file} >> {currentdir}/text.prev")
+    # note: for G2P, the ctc text comes from phoneme recognition
+    #       for P2G, the ctc text comes from ASR
     for file in ["text.ctc", "text.asr_ctc", "text.ctc", "text.asr_ctc"]:
         os.system(f"cat {currentdir}/texts/{file} >> {currentdir}/text.ctc")
     
