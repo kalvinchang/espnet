@@ -11,9 +11,10 @@ Preparation
 Takes about 20 min to run
 """
 
-basedir = "dump" # path to the new train/dev/test directory
+basedir = "dump/raw" # path to the new train/dev/test directory
+# assumes plusdir and textdir contain the same utterances in the same order
 plusdir = "/ocean/projects/cis210027p/kchang1/espnet/egs2/ipapack_plus/asr1/dump/raw" # path to ipapack_plus's dump train/dev/test dump directory
-textdir = "/ocean/projects/cis210027p/kchang1/espnet/egs2/ipapack_plus/s2t1/dump"
+textdir = "/ocean/projects/cis210027p/kchang1/espnet/egs2/ipapack_plus/s2t1/dump/raw"
 
 for dataset in ["train", "dev"]:
     print(dataset[0].upper()+dataset[1:], "set:")
