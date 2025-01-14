@@ -7,13 +7,18 @@ import langcodes
 from langcodes import tag_is_valid
 import argparse
 
-SOP = "<SOP>"
-SOS = "<SOS>"
-EOS = "<EOS>"
+from utils import SYMBOL_NA
+
+
+"""
+Converts IPAPack++ into OWSM's expected format
+"""
+
 ASR = "<asr>"
 PR = "<pr>"
 G2P = "<g2p>"
 P2G = "<p2g>"
+TEXT_NA = SYMBOL_NA
 NO_TIME = "<notimestamps>"
 SAMPLE_RATE = 16000
 LANG = "<LANG>"  # Should be mapping from utt_id to language code
@@ -109,6 +114,22 @@ def main(root_dir, output_dir, lang_dist_json, draw_only=False):
             }
 
             # Write text file
+            # phoneme recognition
+            #   text: phonemes, with task tokens
+            #   text_prev: previous context for phoneme recognition (none for now)
+            #   text.ctc: phonemes, no task tokens
+            # speech recognition (orthography as output)
+            #   text.asr: phonemes, with task tokens
+            #   text.asr_ctc: phonemes, no task tokens
+            #   text_prev (above): previous context for ASR (none for now)
+            # G2P (grapheme/orthography to phoneme)
+            #   text.g2p: phonemes, with task tokens
+            #   text.g2p_prev: previous context for G2P (graphemes)
+            #   text.ctc (above): phonemes, no task tokens
+            # P2G (phoneme to grapheme/orthography)
+            #   text.p2g: with task tokens
+            #   text.p2g_prev: previous context for P2G (phonemes)
+            #   text.asr_ctc (above): graphemes, no task tokens
             with open(os.path.join(process_dir, "text"), "w") as pr_text, \
                 open(os.path.join(process_dir, "text.prev"), "w") as prev_text, \
                 open(os.path.join(process_dir, "text.ctc"), "w") as text_ctc, \
@@ -145,7 +166,7 @@ def main(root_dir, output_dir, lang_dist_json, draw_only=False):
                     utt2lang[utt_id] = LANG
                     
                     pr_text.write(f"{utt_id} {LANG}{PR}{NO_TIME}{p}\n")
-                    prev_text.write(f"{utt_id} {o}\n")
+                    prev_text.write(f"{utt_id} {SYMBOL_NA}\n")
                     text_ctc.write(f"{utt_id} {p}\n")
                     asr_text.write(f"{utt_id} {LANG}{ASR}{NO_TIME}{o}\n")
                     asr_text_ctc.write(f"{utt_id} {o}\n")
