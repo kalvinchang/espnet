@@ -480,7 +480,7 @@ class Speech2Text:
 
     @torch.no_grad()
     @typechecked
-    def __call__(self, speech: Union[torch.Tensor, np.ndarray]) -> Union[
+    def __call__(self, speech: Union[torch.Tensor, np.ndarray], utt_id: Union[List[str], None] = None) -> Union[
         ListOfHypothesis,
         List[ListOfHypothesis],
         Tuple[
@@ -512,7 +512,7 @@ class Speech2Text:
         batch = to_device(batch, device=self.device)
 
         # b. Forward Encoder
-        enc, enc_olens = self.asr_model.encode(**batch)
+        enc, enc_olens = self.asr_model.encode(**batch, utt_id=utt_id)
         if self.multi_asr:
             enc = enc.unbind(dim=1)  # (batch, num_inf, ...) -> num_inf x [batch, ...]
         if self.enh_s2t_task or self.multi_asr:
@@ -837,7 +837,7 @@ def inference(
 
             # N-best list of (text, token, token_int, hyp_object)
             try:
-                results = speech2text(**batch)
+                results = speech2text(**batch, utt_id=keys)
             except TooShortUttError as e:
                 logging.warning(f"Utterance {keys} {e}")
                 hyp = Hypothesis(score=0.0, scores={}, states={}, yseq=[])
