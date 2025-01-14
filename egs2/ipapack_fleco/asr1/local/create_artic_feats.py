@@ -20,6 +20,11 @@ if __name__ == "__main__":
         help="feature set to extract",
     )
     parser.add_argument(
+        "--write_vocabulary",
+        action="store_true",
+        help="Writes a vocabulary file with the possible values for each feature, including <blank>",
+    )
+    parser.add_argument(
         "--dont_overwrite",
         action="store_true",
         help="will raise an error if the feature text files already exist",
@@ -82,9 +87,10 @@ if __name__ == "__main__":
             writer = artic_feat_files[feat]
             writer.close()
 
-        with open(f"{args.data_dir}/feature_values.json", "x" if args.dont_overwrite else "w", encoding="utf-8") as file:
-            # Sort vocabularies for consistency
-            json.dump({feat: sorted(vocabulary) for feat, vocabulary in feat_vocabularies.items()}, file)
+        if args.write_vocabulary:
+            with open(f"{args.data_dir}/feature_values.json", "x" if args.dont_overwrite else "w", encoding="utf-8") as file:
+                # Sort vocabularies for consistency
+                json.dump({feat: ["<blank>"] + sorted(vocabulary) for feat, vocabulary in feat_vocabularies.items()}, file)
 
         if len(oov_phonemes) > 0:
             print(len(oov_phonemes), "OOV phonemes not covered by panphon:")

@@ -12,7 +12,8 @@ stop_stage=100
 min_wav_duration=0.5
 SECONDS=0
 
-asr_data_dir=
+train_data_dir=
+valid_data_dir=
 
 
 log() {
@@ -58,7 +59,8 @@ fi
 if [ ${stage} -eq 2 ] && [ ${stop_stage} -ge 2 ]; then
     log "data prep stage 2: Additional data processing - This should only be called after ASR stage 4"
     # create file of articulatory features for auxiliary CTC
-    python local/create_artic_feats.py --data_dir ${asr_data_dir}
+    python local/create_artic_feats.py --data_dir "${train_data_dir}" --write_vocabulary
+    python local/create_artic_feats.py --data_dir "${valid_data_dir}"
 fi
 
 log "Successfully finished. [elapsed=${SECONDS}s]"

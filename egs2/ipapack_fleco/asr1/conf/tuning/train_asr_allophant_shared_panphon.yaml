@@ -216,7 +216,7 @@ model_conf:
           - round
           - velaric
           - tense
-          - long
+          # - long
 
 aux_ctc_tasks: ["syl", "son", "cons", "cont", "delrel", "lat", "nas", "strid", "voi", "sg", "cg", "ant", "cor", "distr", "lab", "hi", "lo", "back", "round", "velaric", "tense", "long"]
 
@@ -237,7 +237,7 @@ best_model_criterion:
     - max
 keep_nbest_models: 10
 
-use_amp: true
+use_amp: false
 cudnn_deterministic: false
 cudnn_benchmark: false
 
@@ -250,5 +250,5 @@ scheduler_conf:
     warmup_steps: 2500
 
 ctc_conf:
-    ignore_nan_grad: true
+    zero_infinity: true
     elementwise_affine: false

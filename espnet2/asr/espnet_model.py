@@ -227,7 +227,7 @@ class ESPnetASRModel(AbsESPnetModel):
                             dropout_rate=ctc.dropout_rate,
                             ctc_type=ctc.ctc_type,
                             reduce=ctc.reduce,
-                            ignore_nan_grad=ctc.ctc_type == "builtin2" and ctc.ignore_nan_grad,
+                            ignore_nan_grad=ctc.ignore_nan_grad if ctc.ctc_type == "builtin2" else None,
                             zero_infinity=ctc.ctc_type != "gtnctc" and ctc.ctc_loss.zero_infinity,
                             **brctc_args
                         )

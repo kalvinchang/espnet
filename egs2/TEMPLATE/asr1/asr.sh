@@ -861,8 +861,7 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ] && ! [[ " ${skip_stages} " =~ [
 
     if [ -n "${post_process_local_data_opts}" ]; then
         # Do any additional local data post-processing here
-        local/data.sh ${post_process_local_data_opts} --asr_data_dir "${data_feats}/${train_set}"
-        local/data.sh ${post_process_local_data_opts} --asr_data_dir "${data_feats}/${valid_set}"
+        local/data.sh ${post_process_local_data_opts} --train_data_dir "${data_feats}/${train_set}" --valid_data_dir "${data_feats}/${valid_set}"
     fi
 
     # shellcheck disable=SC2002,SC2068,SC2005
