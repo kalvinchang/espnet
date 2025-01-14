@@ -23,7 +23,7 @@ NO_TIME = "<notimestamps>"
 SAMPLE_RATE = 16000
 LANG = "<LANG>"  # Should be mapping from utt_id to language code
 UNK_LANG = "<UNK_LANG>"
-remove_space_lang = ['<cmn>', '<jpn>', '<kor>', '<vie>']
+remove_space_lang = ['<cmn>', '<jpn>', '<kor>', '<tha>']
 copy_files = ["feats_type", "spk2utt", "utt2num_samples", "utt2spk", "wav.scp"]
 
 
