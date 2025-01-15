@@ -149,12 +149,12 @@ def extract_vocabulary(
                 if inventory is None:
                     inventories[language] = inventory = set()
 
+            # FIXME: Temporary workaround missing Allophoible feature
+            transcription = transcription.replace("l̴", "lˠ").replace("ɛˤ", "ɛ")
             if phonepiece is None:
                 # TODO: Temporary workaround for inconsistent diacritic ordering interfering with tokenization
                 phonemes = _tokenize_string(transcription.replace("ːˠ", "ˠː").replace("ːʲ", "ʲː").replace("ʰʷ", "ʷʰ").replace("ʰʲ", "ʲʰ"), shared_tokenizer)
             else:
-                # FIXME: Temporary workaround missing Allophoible feature
-                transcription = transcription.replace("l̴", "lˠ").replace("ɛˤ", "ɛ")
                 phonemes = [
                     _tokenize_string(phoneme, shared_tokenizer)
                     for word in delimiters.split(transcription)

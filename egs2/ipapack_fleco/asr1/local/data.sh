@@ -61,6 +61,7 @@ if [ ${stage} -eq 2 ] && [ ${stop_stage} -ge 2 ]; then
     # create file of articulatory features for auxiliary CTC
     python local/create_artic_feats.py --data_dir "${train_data_dir}" --write_vocabulary
     python local/create_artic_feats.py --data_dir "${valid_data_dir}"
+    python local/map_to_phoible.py --skip_mapping
 fi
 
 log "Successfully finished. [elapsed=${SECONDS}s]"
