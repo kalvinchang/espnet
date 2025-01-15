@@ -292,6 +292,10 @@ if __name__ == "__main__":
         'ny_mw', 'mn_mn', 'so_so', 'my_mm'
     }
     df = df[~df['split'].isin(FLEURS_EXCLUDE)]
+    REMOVE_LANGS = {
+        'ia'  # Interlingua
+    }
+    df = df[~df['lang'].isin(REMOVE_LANGS)]
     logging.info("finished removing languages")
 
     # drop empty rows
