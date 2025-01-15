@@ -15,9 +15,12 @@ encoder_conf:
     phoneme_embedding_size: 640
     # Blank offset 2 to ignore <unk> token from Stage 5
     blank_offset: 2
+    # <sos/eos> token from Stage 5
+    additional_special_tokens: 1
     feature_type: panphon
     use_allophone_layer: false
     phoneme_inventory_file: data/token_list/word/tokens.txt
+    composition_inventories_file: dump/raw/inventories.json
     composition_features:
       - syl
       - son
@@ -41,7 +44,7 @@ encoder_conf:
       - velaric
       - tense
       - long
-    # language_id_mapping_path: dump/raw/supported_languages.json
+    language_id_mapping_path: dump/raw/supported_languages.json
     utt_id_separator: "_"
     allophone_languages:
       - afr

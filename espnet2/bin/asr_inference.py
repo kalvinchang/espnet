@@ -119,6 +119,8 @@ class Speech2Text:
         threshold_probability: float = 0.99,
         max_seq_len: int = 5,
         max_mask_parallel: int = -1,
+        disable_interctc_decoding: bool = False,
+        use_language_vocabulary: bool = False,
     ):
 
         task = ASRTask if not enh_s2t_task else EnhS2TTask
@@ -477,6 +479,8 @@ class Speech2Text:
         self.nbest = nbest
         self.enh_s2t_task = enh_s2t_task
         self.multi_asr = multi_asr
+        self.disable_interctc_decoding = disable_interctc_decoding
+        self.use_language_vocabulary = use_language_vocabulary
 
     @torch.no_grad()
     @typechecked
@@ -512,7 +516,8 @@ class Speech2Text:
         batch = to_device(batch, device=self.device)
 
         # b. Forward Encoder
-        enc, enc_olens = self.asr_model.encode(**batch, utt_id=utt_id)
+        extra_args = {"use_language_vocabulary": True} if self.use_language_vocabulary else {}
+        enc, enc_olens = self.asr_model.encode(**batch, **extra_args, utt_id=utt_id)
         if self.multi_asr:
             enc = enc.unbind(dim=1)  # (batch, num_inf, ...) -> num_inf x [batch, ...]
         if self.enh_s2t_task or self.multi_asr:
@@ -546,7 +551,7 @@ class Speech2Text:
             results = self._decode_single_sample(enc[0])
 
             # Encoder intermediate CTC predictions
-            if intermediate_outs is not None:
+            if intermediate_outs is not None and not self.disable_interctc_decoding:
                 encoder_interctc_res = self._decode_interctc(intermediate_outs)
                 results = (results, encoder_interctc_res)
 
@@ -747,6 +752,8 @@ def inference(
     threshold_probability: float,
     max_seq_len: int,
     max_mask_parallel: int,
+    disable_interctc_decoding: bool,
+    use_language_vocabulary: bool,
 ):
     if batch_size > 1:
         raise NotImplementedError("batch decoding is not implemented")
@@ -806,6 +813,8 @@ def inference(
         threshold_probability=threshold_probability,
         max_seq_len=max_seq_len,
         max_mask_parallel=max_mask_parallel,
+        disable_interctc_decoding=disable_interctc_decoding,
+        use_language_vocabulary=use_language_vocabulary,
     )
     speech2text = Speech2Text.from_pretrained(
         model_tag=model_tag,
@@ -890,7 +899,7 @@ def inference(
                 # Write intermediate predictions to
                 # encoder_interctc_layer<layer_idx>.txt
                 ibest_writer = writer["1best_recog"]
-                if encoder_interctc_res is not None:
+                if encoder_interctc_res is not None and not disable_interctc_decoding:
                     for idx, text in encoder_interctc_res.items():
                         ibest_writer[f"encoder_interctc_layer{idx}.txt"][key] = (
                             " ".join(text)
@@ -1078,6 +1087,19 @@ def get_parser():
         "--transducer_conf",
         default=None,
         help="The keyword arguments for transducer beam search.",
+    )
+
+    group.add_argument(
+        "--disable_interctc_decoding",
+        type=str2bool,
+        default=False,
+        help="Disables CTC decoding of outputs from intermediate encoder layers",
+    )
+    group.add_argument(
+        "--use_language_vocabulary",
+        type=str2bool,
+        default=False,
+        help="Instructs the encoder to use a separate vocabulary specific to each language",
     )
 
     group = parser.add_argument_group("Text converter related")

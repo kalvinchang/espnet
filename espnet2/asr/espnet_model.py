@@ -195,7 +195,7 @@ class ESPnetASRModel(AbsESPnetModel):
 
         self.aux_ctc_share_vocab = aux_ctc_share_vocab
         if ctc_weight == 0.0:
-            self.ctc = None
+            self._ctc = None
         elif aux_ctc_share_vocab is not None:
             # Load individual CTC vocabularies from the given path
             with open(aux_ctc_share_vocab, "r", encoding="utf-8") as file:
@@ -205,7 +205,7 @@ class ESPnetASRModel(AbsESPnetModel):
                 raise Exception("aux_ctc_share_vocab was given but no aux_ctc losses were defined")
 
             # each loss gets its own CTC, including default text output
-            self.ctc = ModuleDict({"text": ctc})
+            self._ctc = ModuleDict({"text": ctc})
             for idx_key in self.aux_ctc:
                 if isinstance(self.aux_ctc[idx_key], list):
                     if hasattr(self.encoder, "intermediate_size"):
@@ -224,7 +224,7 @@ class ESPnetASRModel(AbsESPnetModel):
 
                     for aux_data_key in self.aux_ctc[idx_key]:
                         # Get vocab size for each CTC loss individually
-                        self.ctc[aux_data_key] = CTC(
+                        self._ctc[aux_data_key] = CTC(
                             odim=len(aux_ctc_vocab[aux_data_key]),
                             encoder_output_size=encoder_output_size,
                             dropout_rate=ctc.dropout_rate,
@@ -235,9 +235,9 @@ class ESPnetASRModel(AbsESPnetModel):
                             **brctc_args
                         )
                 else:
-                    self.ctc[idx_key] = ctc
+                    self._ctc[idx_key] = ctc
         else:
-            self.ctc = ctc
+            self._ctc = ctc
 
         self.extract_feats_in_collect_stats = extract_feats_in_collect_stats
 
@@ -259,6 +259,13 @@ class ESPnetASRModel(AbsESPnetModel):
             self.register_buffer("global_step", torch.LongTensor([0]))
         else:
             self.global_step = 0  # backward compatability for saved ckpts
+
+    @property
+    def ctc(self) -> Optional[CTC]:
+        # Only return the primary CTC loss when accessed from other parts of ESPnet that always assume a single shared CTC loss instance
+        if isinstance(self._ctc, torch.nn.ModuleDict):
+            return self._ctc["text"]
+        return self._ctc
 
     def forward(
         self,
@@ -485,7 +492,7 @@ class ESPnetASRModel(AbsESPnetModel):
         return {"feats": feats, "feats_lengths": feats_lengths}
 
     def encode(
-        self, speech: torch.Tensor, speech_lengths: torch.Tensor, max_layer: int = None, utt_id: Union[List[str], None] = None
+        self, speech: torch.Tensor, speech_lengths: torch.Tensor, max_layer: int = None, utt_id: Union[List[str], None] = None, use_language_vocabulary: bool = False,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Frontend + Encoder. Note that this method is used by asr_inference.py
 
@@ -535,9 +542,11 @@ class ESPnetASRModel(AbsESPnetModel):
                 if self.encoder.interctc_use_conditioning or getattr(
                     self.encoder, "ctc_trim", False
                 ):
-                    extra_args["ctc"] = self.ctc
+                    extra_args["ctc"] = self._ctc
                 if self.encoder.requires_utt_id:
                     extra_args["utt_id"] = utt_id
+                if use_language_vocabulary:
+                    extra_args["use_language_vocabulary"] = True
 
                 encoder_out, encoder_out_lens, _ = self.encoder(
                     feats, feats_lengths, **extra_args
@@ -547,9 +556,11 @@ class ESPnetASRModel(AbsESPnetModel):
             if self.encoder.interctc_use_conditioning or getattr(
                 self.encoder, "ctc_trim", False
             ):
-                extra_args["ctc"] = self.ctc
+                extra_args["ctc"] = self._ctc
             if self.encoder.requires_utt_id:
                 extra_args["utt_id"] = utt_id
+            if use_language_vocabulary:
+                extra_args["use_language_vocabulary"] = True
 
             encoder_out, encoder_out_lens, _ = self.encoder(
                 feats, feats_lengths, **extra_args
@@ -740,17 +751,17 @@ class ESPnetASRModel(AbsESPnetModel):
     ):
         if not self.aux_ctc_share_vocab:
             # Calc CTC loss
-            loss_ctc = self.ctc(encoder_out, encoder_out_lens, ys_pad, ys_pad_lens)
+            loss_ctc = self._ctc(encoder_out, encoder_out_lens, ys_pad, ys_pad_lens)
         else:
-            loss_ctc = self.ctc["text" if ctc_key is None else ctc_key](encoder_out, encoder_out_lens, ys_pad, ys_pad_lens)
+            loss_ctc = self._ctc["text" if ctc_key is None else ctc_key](encoder_out, encoder_out_lens, ys_pad, ys_pad_lens)
 
         # Calc CER using CTC
         cer_ctc = None
         if not self.training and self.error_calculator is not None:
             if not self.aux_ctc_share_vocab:
-                ys_hat = self.ctc.argmax(encoder_out).data
+                ys_hat = self._ctc.argmax(encoder_out).data
             else:
-                ys_hat = self.ctc["text" if ctc_key is None else ctc_key].argmax(encoder_out).data
+                ys_hat = self._ctc["text" if ctc_key is None else ctc_key].argmax(encoder_out).data
             cer_ctc = self.error_calculator(ys_hat.cpu(), ys_pad.cpu(), is_ctc=True)
         return loss_ctc, cer_ctc
 
@@ -809,7 +820,7 @@ class ESPnetASRModel(AbsESPnetModel):
         text: torch.Tensor,
         text_lengths: torch.Tensor,
     ):
-        if self.ctc is None:
+        if self._ctc is None:
             return
         assert text_lengths.dim() == 1, text_lengths.shape
         # Check that batch_size is unified
@@ -829,8 +840,8 @@ class ESPnetASRModel(AbsESPnetModel):
             encoder_out = encoder_out[0]
 
         # Calc CTC loss
-        do_reduce = self.ctc.reduce
-        self.ctc.reduce = False
-        loss_ctc = self.ctc(encoder_out, encoder_out_lens, text, text_lengths)
-        self.ctc.reduce = do_reduce
+        do_reduce = self._ctc.reduce
+        self._ctc.reduce = False
+        loss_ctc = self._ctc(encoder_out, encoder_out_lens, text, text_lengths)
+        self._ctc.reduce = do_reduce
         return loss_ctc

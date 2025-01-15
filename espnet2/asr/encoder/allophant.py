@@ -1,5 +1,5 @@
 import math
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, Iterator, List, Optional, Tuple, Union
 import unicodedata
 from typeguard import typechecked
 import logging
@@ -154,19 +154,21 @@ class EmbeddingCompositionLayer(nn.Module):
     _feature_table: Tensor
     _category_offsets: Tensor
 
-    def __init__(self, embedding_size: int, feature_table: Tensor, blank_offset: int = 1) -> None:
+    def __init__(self, embedding_size: int, feature_table: Tensor, blank_offset: int = 1, additional_special_tokens: int = 0) -> None:
         super().__init__()
 
         assert blank_offset > 0, "Blank offset must be at least 1"
 
         self._output_size = feature_table.shape[0] + blank_offset
         self._blank_offset = blank_offset
+        self._additional_special_tokens = additional_special_tokens
 
-        # Add blank embedding + embeddings for every other special symbol if blank_offset > 1
-        num_categories = torch.cat((LongTensor([0] * blank_offset), feature_table.max(0).values)) + 1
+        # Add blank embedding + embeddings for every other special symbol if blank_offset > 1 or additional_special_tokens > 0
+        additional_tokens = blank_offset + additional_special_tokens
+        num_categories = torch.cat((LongTensor([0] * additional_tokens), feature_table.max(0).values)) + 1
         unused_categories = torch.cat(
             (
-                torch.tensor([False] * blank_offset),
+                torch.tensor([False] * additional_tokens),
                 torch.cat([row.bincount() for row in feature_table.T]) == 0,
             )
         )
@@ -176,7 +178,7 @@ class EmbeddingCompositionLayer(nn.Module):
             logging.info(f"{unused_count} unused feature embeddings")
 
         # Offsets and one additional entry for the special blank feature
-        category_offsets = num_categories.cumsum(0)[blank_offset - 1:-1].unsqueeze(0)
+        category_offsets = num_categories.cumsum(0)[additional_tokens - 1:-1].unsqueeze(0)
         feature_table += category_offsets
         self._attribute_embeddings = nn.EmbeddingBag(
             int(num_categories.sum()), embedding_size, mode="sum"
@@ -216,6 +218,13 @@ class EmbeddingCompositionLayer(nn.Module):
             self._attribute_embeddings(target_feature_indices),
         ]
 
+        if self._additional_special_tokens:
+            composed.append(
+                self._attribute_embeddings(
+                    torch.arange(self._blank_offset, self._blank_offset + self._additional_special_tokens, dtype=target_feature_indices.dtype, device=inputs.device).unsqueeze(1)
+                ),
+            )
+
         composed_embeddings = torch.cat(composed).T
 
         return (inputs @ composed_embeddings) / self._scale_factor
@@ -232,10 +241,12 @@ class AllophantLayers(AbsEncoder):
         language_id_mapping_path: Optional[str] = None,
         phoible_path: Union[str, None] = None,
         blank_offset: int = 1,
+        additional_special_tokens: int = 0,
         use_allophone_layer: bool = True,
         utt_id_separator: str = "_",
         feature_type: str = "phoible",
         phoneme_inventory_file: Optional[str] = None,
+        composition_inventories_file: Optional[str] = None,
     ):
         super().__init__()
 
@@ -250,6 +261,12 @@ class AllophantLayers(AbsEncoder):
                 ]
         else:
             phoneme_inventory = None
+
+        if composition_inventories_file is not None:
+            with open(composition_inventories_file, "r", encoding="utf-8") as file:
+                self._composition_inventories = json.load(file)
+        else:
+            self._composition_inventories = None
 
         # Used by ESPnetAsrModel to identify encoders that take `utt_id` as an input
         # Required if `use_allophone_layer` is `True`
@@ -281,7 +298,7 @@ class AllophantLayers(AbsEncoder):
             case unsupported:
                 raise ValueError(f"Feature set {unsupported} if unsupported")
 
-        indexer = PhoneticAttributeIndexer(
+        self._indexer = PhoneticAttributeIndexer(
             features,
             phoible_path,
             composition_features,
@@ -290,7 +307,7 @@ class AllophantLayers(AbsEncoder):
         )
 
         if use_allophone_layer:
-            if indexer.allophone_data is None:
+            if self._indexer.allophone_data is None:
                 raise ValueError(
                     "Model configuration using attribute embedding composition and an allophone layer"
                     " requires allophone data in the attribute indexer with but got `None`"
@@ -299,23 +316,22 @@ class AllophantLayers(AbsEncoder):
                 raise ValueError("Using a custom phoneme inventory together with the allophone layer is unsupported")
 
             if phoneme_inventory is None:
-                phoneme_inventory = indexer.allophone_data.shared_phone_indexer.phonemes.tolist()
+                phoneme_inventory = self._indexer.allophone_data.shared_phone_indexer.phonemes.tolist()
             language_allophones = LanguageAllophoneMappings.from_allophone_data(
-                indexer,
+                self._indexer,
                 allophone_languages,
             )
         else:
             if phoneme_inventory is None:
-                phoneme_inventory = indexer.phonemes.tolist()
+                phoneme_inventory = self._indexer.phonemes.tolist()
             # Use the phoneme subset from the attribute indexer with all features for constructing the embeddings
             language_allophones = None
 
         # Use either the phone or the phoneme subset from the attribute indexer with all features for constructing the embeddings
-        training_attributes = indexer.full_attributes.subset(
+        training_features = self._indexer.full_attributes.subset(
             phoneme_inventory,
-            indexer.composition_features.copy(),
-        )
-        training_features = training_attributes.dense_feature_table.long()
+            self._indexer.composition_features.copy(),
+        ).dense_feature_table.long()
 
         # Projection from hidden size to the phoneme embedding size
         self._projection_layer = nn.Linear(input_size, phoneme_embedding_size)
@@ -323,7 +339,7 @@ class AllophantLayers(AbsEncoder):
 
         # Phonetic feature embedding composition for computing phoneme logits
         self._phoneme_composition_layer = EmbeddingCompositionLayer(
-            phoneme_embedding_size, training_features, blank_offset
+            phoneme_embedding_size, training_features, blank_offset, additional_special_tokens
         )
 
         # Optional per-language allophone layer
@@ -338,7 +354,7 @@ class AllophantLayers(AbsEncoder):
                 reverse_map[language]: i
                 for i, language in enumerate(language_allophones.languages)
             }
-            self._output_size = indexer.phonemes.size + blank_offset
+            self._output_size = self._indexer.phonemes.size + blank_offset
             self._allophone_layer = AllophoneMapping(
                 self._phoneme_composition_layer.output_size(),
                 self._output_size,
@@ -350,6 +366,19 @@ class AllophantLayers(AbsEncoder):
     def output_size(self) -> int:
         return self._output_size
 
+    def _utterance_langcodes(self, utt_id_batch: List[str]) -> Iterator[str]:
+        for i in utt_id_batch:
+            yield self._separator.split(i, 2)[1]
+
+    def _inference_with_inventory(self, inputs: Tensor, inventory: List[str]) -> Tensor:
+        return self._phoneme_composition_layer(
+            inputs,
+            self._indexer.full_attributes.subset(
+                inventory,
+                self._indexer.composition_features.copy(),
+            ).dense_feature_table.long()
+        )
+
     def forward(
         self,
         xs_pad: Tensor,
@@ -357,19 +386,41 @@ class AllophantLayers(AbsEncoder):
         prev_states: Optional[Tensor] = None,
         utt_id: Optional[List[str]] = None,
         target_feature_indices: Optional[Tensor] = None,
-    ) -> Tuple[Tuple[Tensor, Tuple[Tuple[int, Tensor], Tuple[int, Tensor]]], Tensor, Optional[Tensor]]:
+        use_language_vocabulary: bool = False,
+    ) -> Tuple[Tuple[Tensor, List[Tuple[int, Tensor]]], Tensor, Optional[Tensor]]:
         if utt_id is None:
             raise ValueError(
                 f"{self.__class__.__name__}.encode was called without utt_id, "
                 "which is required by the encoder"
             )
 
-        output = self._phoneme_composition_layer(
-            self._projection_layer(xs_pad), target_feature_indices
-        )
-        if self._allophone_layer is not None:
+        output = self._projection_layer(xs_pad)
+
+        if use_language_vocabulary and target_feature_indices is None and self._composition_inventories:
+            language_codes = list(self._utterance_langcodes(utt_id))
+            first_code = language_codes[0]
+
+            if all(code == first_code for code in language_codes):
+                # Fast path if the batch consists only of utterances in a single language
+                output = self._inference_with_inventory(
+                    output, self._composition_inventories[first_code]
+                )
+            else:
+                # Encode each sample separately with its inventory
+                output = torch.cat([
+                    self._inference_with_inventory(
+                        output[None, i], self._composition_inventories[code]
+                    ) for i, code in enumerate(language_codes)
+                ])
+        else:
+            output = self._phoneme_composition_layer(
+                output, target_feature_indices
+            )
+
+        # Only use the allophone layer for training
+        if self._allophone_layer is not None and self.training:
             language_ids = torch.tensor(
-                [self._language_ids[self._separator.split(i, 2)[1]] for i in utt_id],
+                [self._language_ids[i] for i in self._utterance_langcodes(utt_id)],
                 dtype=torch.int64,
             )
             # Assume that the allophone layer should not be used when a custom phoneme inventory is provided
@@ -378,7 +429,7 @@ class AllophantLayers(AbsEncoder):
             )
 
         # Return frontend output as an intermediate output for auxiliary CTC
-        return (output, ((0, xs_pad), (1, output))), ilens, None
+        return (output, [(0, xs_pad), (1, output)]), ilens, None
 
     def intermediate_size(self, index_key: str) -> int:
         if index_key == "0":
