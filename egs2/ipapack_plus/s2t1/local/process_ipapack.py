@@ -170,6 +170,9 @@ def main(root_dir, output_dir, lang_dist_json, draw_only=False):
                         unk_language_set.add(lang)
                         LANG = UNK_LANG
                         
+                    if LANG == "ina":
+                        # remove interlingual
+                        continue
                     
                     if LANG in remove_space_lang:
                         o = o.replace(" ", "")
