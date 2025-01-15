@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import langcodes
 from langcodes import tag_is_valid
 import argparse
+import regex as re
 
 # from utils import SYMBOL_NA
 
@@ -28,6 +29,16 @@ copy_files = ["feats_type", "spk2utt", "utt2num_samples", "utt2spk", "wav.scp"]
 
 
 # TODO: unhardcode when we prepare final code
+
+
+def text_normalization(orthography):
+    # most of the text normalization seems to have done
+    #   in the creation of IPAPack++
+    # we just need to remove punctuation and symbols
+    # see local/all_symbols to see all symbols
+    # see local/bad_symbols for which are removed by this regex
+    return re.sub(r'\p{P}|\p{S}', '', orthography)
+
 
 def draw_figure(lang2dur, subset_name, image_dir):
     # Sort by count and keep only the top 10 languages
@@ -162,6 +173,8 @@ def main(root_dir, output_dir, lang_dist_json, draw_only=False):
                     
                     if LANG in remove_space_lang:
                         o = o.replace(" ", "")
+
+                    o = text_normalization(o)
 
                     utt2lang[utt_id] = LANG
                     

@@ -199,6 +199,14 @@ def normalize_phones(transcription):
     return ipa_tokens
 
 
+def text_normalization(orthography):
+    # most of the text normalization seems to have done
+    #   in the creation of IPAPack++
+    # we just need to remove punctuation and symbols
+    # see local/all_symbols to see all symbols
+    # see local/bad_symbols for which are removed by this regex
+    return re.sub(r'\p{P}|\p{S}', '', orthography)
+
 
 def df_to_kaldi(df, source_dir, data_dir):
     # kaldi format
@@ -212,6 +220,10 @@ def df_to_kaldi(df, source_dir, data_dir):
 # adapted from https://github.com/juice500ml/espnet/blob/wav2gloss/egs2/
 #       wav2gloss/asr1/local/data_prep.py
 def write_dir(source_dir, target_dir, transcripts):
+    # note: The "text" file is used to store phonemes,
+    #       while the orthography is stored in "orthography."
+    #       What might be confusing is that the "text" column in the df
+    #       stores the orthography.
     wavscp = open(target_dir / "wav.scp", "w", encoding="utf-8")
     text = open(target_dir / "text", "w", encoding="utf-8")
     utt2spk = open(target_dir / "utt2spk", "w", encoding="utf-8")
@@ -287,6 +299,9 @@ if __name__ == "__main__":
 
     # normalize phones
     df['ipa_clean'] = df.apply(lambda row: normalize_phones(row['ipa_clean']), axis=1)
+    # normalize text
+    df['text'] = df.apply(lambda row: text_normalization(row['text']), axis=1)
+
     logging.info("finished text normalization")
     df.to_csv(source_dir / 'transcript_normalized.csv', index=False)
 
