@@ -96,6 +96,7 @@ def main(root_dir, output_dir, lang_dist_json, draw_only=False):
     all_dump_dirs = sorted(os.listdir(ROOT_DUMP_DIR))
     all_data_dirs = sorted(os.listdir(ROOT_DATA_DIR))
     if draw_only:
+        # aggregate duration for all test directories
         test_stats = {}
         for data_dir in tqdm(all_data_dirs):
             process_dir = os.path.join(output_dir, data_dir)
@@ -104,7 +105,8 @@ def main(root_dir, output_dir, lang_dist_json, draw_only=False):
 
             if 'test' in data_dir:
                 # a language could appear in multiple test sets
-                test_stats[lang] = test_stats.get(lang, 0) + lang2dur[lang]
+                for lang, dur in lang2dur.items():
+                    test_stats[lang] = test_stats.get(lang, 0) + dur
 
             draw_figure(lang2dur, data_dir, image_dir)
         draw_figure(test_stats, "test", image_dir)
