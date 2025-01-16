@@ -6,7 +6,7 @@ from tqdm import tqdm
 Functions
 - subsample: subsample the dataset by 1/ratio
 - filter: filter the dataset by a keyword
-- rename: 
+- rename: handle dataset renaming for wav.scp and data/
 - genwav: generate new data_wav.ark and wav.scp for each split
 - combine: combine files from a list of datasets
 """
@@ -54,9 +54,17 @@ def filter(olddir, newdir, dataset, key):
     for file in ["spk2utt", "text", "utt2spk", "wav.scp", "utt2num_samples"]:
         os.system(f"grep '{key}' {olddir}/{dataset}/{file} > {currentdir}/{file}")
 
-def rename(olddir, newdir, dataset, suffix):
+def rename(currentdir, key, newkey):
+    print(f"-> Replacing '{key}' with '{newkey}' in wav.scp...")
+    os.system(f"sed 's|{key}|{newkey}|g' {currentdir}/wav.scp > {currentdir}/wav.scp.tmp")
+    os.system(f"mv {currentdir}/wav.scp.tmp {currentdir}/wav.scp")
+    for i in range(32):
+        formatdir = f"{currentdir}/data/format.{i+1}"
+        os.system(f"sed 's|{key}|{newkey}|g' {formatdir}/wav.scp > {formatdir}/wav.scp.tmp")
+        os.system(f"mv {formatdir}/wav.scp.tmp {formatdir}/wav.scp")
+    print("Finished!")
 
-def genwav(currentdir, nsplit=32):
+def genwav(olddir, currentdir, nsplit=32):
     print("-> Setting up splits...")
     os.system(f"mkdir {currentdir}/data")
 
@@ -72,7 +80,7 @@ def genwav(currentdir, nsplit=32):
     # 2. In each split, get new data_wav.ark and wav.scp
     for i in tqdm(range(nsplit)):
         formatdir = f"{currentdir}/data/format.{i+1}"
-        os.system(f"sed 's|dump/raw|{plusdir}|g' {formatdir}/wav.scp > {formatdir}/wav.scp.tmp")
+        os.system(f"sed 's|dump/raw|{olddir}|g' {formatdir}/wav.scp > {formatdir}/wav.scp.tmp")
         os.system(f"mv {formatdir}/wav.scp.tmp {formatdir}/wav.scp")
         d = kaldiio.load_scp(f'{formatdir}/wav.scp')
         kaldiio.save_ark(f'{formatdir}/data_wav.ark', d, 
@@ -99,29 +107,27 @@ def combine(newdir, datasets, remove=False):
 if __name__ == "__main__":
     """
     # fleco
-    olddir = "../../ipapack_plus/asr1/dump/raw"
+    olddir = "/ocean/projects/cis210027p/kchang1/espnet/egs2/ipapack_plus/asr1/dump/raw"
     newdir = "dump/raw"
     for dataset in ["train", "dev"]:
         filter(olddir, newdir, dataset, "fleurs")
-        genwav(f"{newdir}/{dataset}")
+        genwav(olddir, f"{newdir}/{dataset}")
+    os.system(f"cp -r {olddir}/test_doreco {newdir}/test")
+    rename(f"{newdir}/test", "test_doreco", "test")
+    """
     
-    """
-
-
-    """
     # train_1000, dev_1000
     olddir = "/ocean/projects/cis210027p/kchang1/espnet/egs2/ipapack_plus/s2t1/dump/raw"
     newdir = "dump/raw"
     for dataset in ["train", "dev"]:
         subsample(olddir, newdir, dataset, ratio=80, suffix="_1000")
-        # genwav(f"{newdir}/{dataset}_1000")
-    """
-
+        # genwav(olddir, f"{newdir}/{dataset}_1000")
+    
     # test_reduced
     olddir = "/ocean/projects/cis210027p/kchang1/espnet/egs2/ipapack_plus/s2t1/dump/raw"
     newdir = "dump/raw/test_reduced"
 
-    # subsample (heuristically) according the most common lang's size in the dataset
+    ## subsample (heuristically) according the most common lang's size in the dataset
     datasetstats = {"test_aishell": 20, "test_cv": 40, 
         "test_fleurs": 5, "test_kazakh": 20, "test_librispeech": 20, 
         "test_mls_dutch": 20, "test_mls_french": 20, "test_mls_german": 20, 
@@ -131,4 +137,4 @@ if __name__ == "__main__":
     for (dataset, ratio) in datasetstats.items():
         subsample(olddir, newdir, dataset, ratio)
     combine(newdir, datasetstats.keys(), remove=True)
-    # genwav(newdir)
+    # genwav(olddir, newdir)
