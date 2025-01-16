@@ -1,12 +1,14 @@
-import os
-from tqdm import tqdm
+import argparse
+from collections import defaultdict
 import json
+import os
+import regex as re
+
+from tqdm import tqdm
 import pandas as pd
 import matplotlib.pyplot as plt
 import langcodes
 from langcodes import tag_is_valid
-import argparse
-import regex as re
 
 # from utils import SYMBOL_NA
 
@@ -57,6 +59,20 @@ def draw_figure(lang2dur, subset_name, image_dir):
     plt.clf()
 
 
+def get_lang_duration(utt2lang, process_dir, lang_dist_json):
+    lang2dur = {} # lang -> duration (sec)
+
+    utt2num_samples_path = os.path.join(process_dir, "utt2num_samples")
+    with open(utt2num_samples_path, "r") as f:
+        for line in f:
+            utt_id, num_samples = line.strip().split(maxsplit=1)
+            lang = utt2lang.get(utt_id, UNK_LANG)
+            lang2dur[lang] = lang2dur.get(lang, 0) + float(num_samples) / SAMPLE_RATE
+
+    json.dump(lang2dur, open(os.path.join(process_dir, lang_dist_json), "w"))
+    return lang2dur
+
+
 def main(root_dir, output_dir, lang_dist_json, draw_only=False):
     ROOT_DUMP_DIR = os.path.join(root_dir, "dump/raw")
     ROOT_DATA_DIR = os.path.join(root_dir, "data")
@@ -64,7 +80,7 @@ def main(root_dir, output_dir, lang_dist_json, draw_only=False):
 
     columns = ["utt_id", "lang"]
     normalize_df = pd.read_csv(
-        os.path.join(ROOT_DF_DIR, "transcript_normalized.csv"), usecols=columns
+        os.path.join(ROOT_DF_DIR, "transcript_normalized_new.csv"), usecols=columns
     )
     doreco_df = pd.read_csv(
         os.path.join(ROOT_DF_DIR, "transcript_doreco.csv"), usecols=columns
@@ -80,11 +96,18 @@ def main(root_dir, output_dir, lang_dist_json, draw_only=False):
     all_dump_dirs = sorted(os.listdir(ROOT_DUMP_DIR))
     all_data_dirs = sorted(os.listdir(ROOT_DATA_DIR))
     if draw_only:
+        test_stats = {}
         for data_dir in tqdm(all_data_dirs):
             process_dir = os.path.join(output_dir, data_dir)
             with open(os.path.join(process_dir, lang_dist_json), "r") as f:
                 lang2dur = json.load(f)
+
+            if 'test' in data_dir:
+                # a language could appear in multiple test sets
+                test_stats[lang] = test_stats.get(lang, 0) + lang2dur[lang]
+
             draw_figure(lang2dur, data_dir, image_dir)
+        draw_figure(test_stats, "test", image_dir)
     else:
         # Process each data directory
         for data_dir in tqdm(all_data_dirs):
@@ -164,23 +187,18 @@ def main(root_dir, output_dir, lang_dist_json, draw_only=False):
                             LANG = "<cmn>"
                         else:
                             LANG = f"<{l}>"
-                            
-                        
                     except:
                         unk_language_set.add(lang)
                         LANG = UNK_LANG
-                        
                     if LANG == "ina":
-                        # remove interlingual
+                        # remove Interlingua
                         continue
-                    
+                    utt2lang[utt_id] = LANG
+
                     if LANG in remove_space_lang:
                         o = o.replace(" ", "")
-
                     o = text_normalization(o)
 
-                    utt2lang[utt_id] = LANG
-                    
                     pr_text.write(f"{utt_id} {LANG}{PR}{NO_TIME}{p}\n")
                     prev_text.write(f"{utt_id} {TEXT_NA}\n")
                     text_ctc.write(f"{utt_id} {p}\n")
@@ -191,22 +209,12 @@ def main(root_dir, output_dir, lang_dist_json, draw_only=False):
                     p2g_text.write(f"{utt_id} {LANG}{P2G}{NO_TIME}{o}\n")
                     prev_p2g_text.write(f"{utt_id} {p}\n")
 
-            
-            lang2dur = {} # lang -> duration (sec)
-            
-            utt2num_samples_path = os.path.join(process_dir, "utt2num_samples")
-            with open(utt2num_samples_path, "r") as f:
-                for line in f:
-                    utt_id, num_samples = line.strip().split(maxsplit=1)
-                    lang = utt2lang.get(utt_id, UNK_LANG)
-                    lang2dur[lang] = lang2dur.get(lang, 0) + float(num_samples) / SAMPLE_RATE
-            
-            json.dump(lang2dur, open(os.path.join(process_dir, lang_dist_json), "w"))
+            # Get language distribution
+            lang2dur = get_lang_duration(utt2lang, process_dir, lang_dist_json)
+
             # Plot language distribution
-            
             draw_figure(lang2dur, os.path.basename(data_dir_path), image_dir)
-            
-            
+
             with open(os.path.join(process_dir, "unk_languages.txt"), "w") as f:
                 for lang in unk_language_set:
                     f.write(f"{lang}\n")
