@@ -1,7 +1,5 @@
 # https://github.com/espnet/espnet/blob/master/egs2/owsm_v3.1/s2t1/conf/train_s2t_ebf_conv2d_size1024_e18_d18_piecewise_lr2e-4_warmup60k_flashattn.yaml
 
-# TODO: change to v1 params to downsize
-
 preprocessor: s2t
 preprocessor_conf:
     text_prev_name: text_prev
@@ -43,8 +41,8 @@ encoder_conf:
     attention_layer_type: selfattn
     pos_enc_layer_type: abs_pos
     rel_pos_type: latest
-    attention_qk_norm: false    # qk norm
-    use_flash_attn: true    # flash attn
+    qk_norm: false    # qk norm
+    use_flash_attn: false    # flash attn - Delta only
     cgmlp_linear_units: 4096
     cgmlp_conv_kernel: 31
     use_linear_after_conv: false
@@ -70,10 +68,6 @@ decoder_conf:
     positional_dropout_rate: 0.1
     self_attention_dropout_rate: 0.1
     src_attention_dropout_rate: 0.1
-    self_attention_qk_norm: false   # qk norm
-    src_attention_qk_norm: false    # qk norm
-    self_attention_use_flash_attn: true
-    src_attention_use_flash_attn: true
 
 model_conf:
     ctc_weight: 0.3
