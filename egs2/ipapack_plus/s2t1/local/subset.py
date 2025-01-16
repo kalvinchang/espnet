@@ -3,6 +3,13 @@ import kaldiio
 from tqdm import tqdm
 
 """
+Preparation
+1. Make a directory to store the train/dev/test dump directory (e.g., ipapack_plus/s2t1/dump/raw)
+    - in this case, "newdir" is "dump/raw"
+    - and "olddir" is the path to the original dump directory
+2. Run this script in newdir's parent directory to get correct path for wav.scp files
+3. `genwav` takes 20 min for fleco -- might take 4+ hours for reduced ipapack_plus
+
 Functions
 - subsample: subsample the dataset by 1/ratio
 - filter: filter the dataset by a keyword
@@ -105,23 +112,11 @@ def combine(newdir, datasets, remove=False):
 
 
 if __name__ == "__main__":
-    """
-    # fleco
-    olddir = "/ocean/projects/cis210027p/kchang1/espnet/egs2/ipapack_plus/asr1/dump/raw"
-    newdir = "dump/raw"
-    for dataset in ["train", "dev"]:
-        filter(olddir, newdir, dataset, "fleurs")
-        genwav(olddir, f"{newdir}/{dataset}")
-    os.system(f"cp -r {olddir}/test_doreco {newdir}/test")
-    rename(f"{newdir}/test", "test_doreco", "test")
-    """
-    
     # train_1000, dev_1000
     olddir = "/ocean/projects/cis210027p/kchang1/espnet/egs2/ipapack_plus/s2t1/dump/raw"
     newdir = "dump/raw"
     for dataset in ["train", "dev"]:
         subsample(olddir, newdir, dataset, ratio=80, suffix="_1000")
-        # genwav(olddir, f"{newdir}/{dataset}_1000")
     
     # test_reduced
     olddir = "/ocean/projects/cis210027p/kchang1/espnet/egs2/ipapack_plus/s2t1/dump/raw"
@@ -137,4 +132,14 @@ if __name__ == "__main__":
     for (dataset, ratio) in datasetstats.items():
         subsample(olddir, newdir, dataset, ratio)
     combine(newdir, datasetstats.keys(), remove=True)
-    # genwav(olddir, newdir)
+
+    """
+    # fleco
+    olddir = "/ocean/projects/cis210027p/kchang1/espnet/egs2/ipapack_plus/asr1/dump/raw"
+    newdir = "dump/raw"
+    for dataset in ["train", "dev"]:
+        filter(olddir, newdir, dataset, "fleurs")
+        genwav(olddir, f"{newdir}/{dataset}")
+    os.system(f"cp -r {olddir}/test_doreco {newdir}/test")
+    rename(f"{newdir}/test", "test_doreco", "test")
+    """
