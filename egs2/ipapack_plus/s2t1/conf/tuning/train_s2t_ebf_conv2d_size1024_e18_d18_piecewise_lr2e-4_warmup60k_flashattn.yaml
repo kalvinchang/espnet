@@ -2,8 +2,8 @@
 
 preprocessor: s2t
 preprocessor_conf:
-    text_prev_name: text_prev
-    text_ctc_name: text_ctc
+    text_prev_name: text.prev
+    text_ctc_name: text.ctc
     fs: 16000
     na_symbol: "<na>"
     speech_length: 20

@@ -33,21 +33,21 @@ def subsample(olddir, newdir, dataset, ratio, suffix=""):
         for i in range(4): # repeat 4 times for 4 tasks
             os.system(f"cat {currentdir}/{file} >> {currentdir}/{file}.tmp")
         os.system(f"mv {currentdir}/{file}.tmp {currentdir}/{file}")
-    for file in ["text_asr", "text_ctc", "text_g2p_prev", "text_p2g_prev", "text", "text_asr_ctc", "text_g2p", "text_p2g", "text_prev"]:
+    for file in ["text.asr", "text.ctc", "text.g2p_prev", "text.p2g_prev", "text", "text.asr_ctc", "text.g2p", "text.p2g", "text.prev"]:
         os.system(f"awk 'NR % {ratio} == 1' {olddir}/{dataset}/{file} > {currentdir}/texts/{file}")
-    os.system(f"cp {currentdir}/texts/text {currentdir}/texts/text_na")
+    os.system(f"cp {currentdir}/texts/text {currentdir}/texts/text.na")
     # remove the text and replace with <na> since no previous text for ASR, phoneme recognition
-    os.system(f"sed -i 's/ .*/ <na>/' {currentdir}/texts/text_na")
+    os.system(f"sed -i 's/ .*/ <na>/' {currentdir}/texts/text.na")
     
     # 3. combine text files
-    for file in ["text", "text_asr", "text_g2p", "text_p2g"]:
+    for file in ["text", "text.asr", "text.g2p", "text.p2g"]:
         os.system(f"cat {currentdir}/texts/{file} >> {currentdir}/text")
-    for file in ["text_na", "text_na", "text_g2p_prev", "text_p2g_prev"]:
-        os.system(f"cat {currentdir}/texts/{file} >> {currentdir}/text_prev")
+    for file in ["text.na", "text.na", "text.g2p_prev", "text.p2g_prev"]:
+        os.system(f"cat {currentdir}/texts/{file} >> {currentdir}/text.prev")
     # note: for G2P, the ctc text comes from phoneme recognition
     #       for P2G, the ctc text comes from ASR
-    for file in ["text_ctc", "text_asr_ctc", "text_ctc", "text_asr_ctc"]:
-        os.system(f"cat {currentdir}/texts/{file} >> {currentdir}/text_ctc")
+    for file in ["text.ctc", "text.asr_ctc", "text.ctc", "text.asr_ctc"]:
+        os.system(f"cat {currentdir}/texts/{file} >> {currentdir}/text.ctc")
 
     print("Finished!")
 
@@ -104,7 +104,7 @@ def genwav(olddir, currentdir, nsplit=32):
 def combine(newdir, datasets, remove=False):
     print("-> Combine all datasets...")
     for dataset in datasets:
-        for file in ["spk2utt", "utt2spk", "wav.scp", "utt2num_samples", "text", "text_prev", "text_ctc"]:
+        for file in ["spk2utt", "utt2spk", "wav.scp", "utt2num_samples", "text", "text.prev", "text.ctc"]:
             os.system(f"cat {newdir}/{dataset}/{file} >> {newdir}/{file}")
         if remove:
             os.system(f"rm -rf {newdir}/{dataset}")
