@@ -13,6 +13,10 @@ SPEECH_RESOLUTION: float = 0.02  # resolution in seconds
 # all timestamp symbols
 SYMBOLS_TIME: List[str] = [
     "<notimestamps>",
+    *[
+        f"<{i * SPEECH_RESOLUTION:.2f}>"
+        for i in range(round(SPEECH_MAX_LEN / SPEECH_RESOLUTION) + 1)
+    ],
 ]
 TASK_TOKENS: List[str] = [
     "<asr>", "<pr>", "<g2p>", "<p2g>"
