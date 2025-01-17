@@ -1,4 +1,5 @@
 import argparse
+from collections import defaultdict
 import json
 import os
 import regex as re
@@ -152,28 +153,28 @@ def main(root_dir, output_dir, lang_dist_json, draw_only=False):
             # phoneme recognition
             #   text: phonemes, with task tokens
             #   text_prev: previous context for phoneme recognition (none for now)
-            #   text_ctc: phonemes, no task tokens
+            #   text.ctc: phonemes, no task tokens
             # speech recognition (orthography as output)
-            #   text_asr: phonemes, with task tokens
-            #   text_asr_ctc: phonemes, no task tokens
+            #   text.asr: phonemes, with task tokens
+            #   text.asr_ctc: phonemes, no task tokens
             #   text_prev (above): previous context for ASR (none for now)
             # G2P (grapheme/orthography to phoneme)
-            #   text_g2p: phonemes, with task tokens
-            #   text_g2p_prev: previous context for G2P (graphemes)
-            #   text_ctc (above): phonemes, no task tokens
+            #   text.g2p: phonemes, with task tokens
+            #   text.g2p_prev: previous context for G2P (graphemes)
+            #   text.ctc (above): phonemes, no task tokens
             # P2G (phoneme to grapheme/orthography)
-            #   text_p2g: with task tokens
-            #   text_p2g_prev: previous context for P2G (phonemes)
-            #   text_asr_ctc (above): graphemes, no task tokens
+            #   text.p2g: with task tokens
+            #   text.p2g_prev: previous context for P2G (phonemes)
+            #   text.asr_ctc (above): graphemes, no task tokens
             with open(os.path.join(process_dir, "text"), "w") as pr_text, \
-                open(os.path.join(process_dir, "text_prev"), "w") as prev_text, \
-                open(os.path.join(process_dir, "text_ctc"), "w") as text_ctc, \
-                open(os.path.join(process_dir, "text_asr"), "w") as asr_text, \
-                open(os.path.join(process_dir, "text_asr_ctc"), "w") as asr_text_ctc, \
-                open(os.path.join(process_dir, "text_g2p"), "w") as g2p_text, \
-                open(os.path.join(process_dir, "text_g2p_prev"), "w") as prev_g2p_text, \
-                open(os.path.join(process_dir, "text_p2g"), "w") as p2g_text, \
-                open(os.path.join(process_dir, "text_p2g_prev"), "w") as prev_p2g_text :
+                open(os.path.join(process_dir, "text.prev"), "w") as prev_text, \
+                open(os.path.join(process_dir, "text.ctc"), "w") as text_ctc, \
+                open(os.path.join(process_dir, "text.asr"), "w") as asr_text, \
+                open(os.path.join(process_dir, "text.asr_ctc"), "w") as asr_text_ctc, \
+                open(os.path.join(process_dir, "text.g2p"), "w") as g2p_text, \
+                open(os.path.join(process_dir, "text.g2p_prev"), "w") as prev_g2p_text, \
+                open(os.path.join(process_dir, "text.p2g"), "w") as p2g_text, \
+                open(os.path.join(process_dir, "text.p2g_prev"), "w") as prev_p2g_text :
 
                 for utt_id, p in utt2phoneme_seq.items():
                     p = "".join([f"/{char}/" for char in p.split()])
@@ -223,7 +224,7 @@ def main(root_dir, output_dir, lang_dist_json, draw_only=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process IPA Pack data")
     parser.add_argument("--root_dir", type=str, default="/ocean/projects/cis210027p/kchang1/espnet/egs2/ipapack_plus/asr1", help="Root directory")
-    parser.add_argument("--output_dir", type=str, default="dump/raw", help="Output directory")
+    parser.add_argument("--output_dir", type=str, default="OWSM_format", help="Output directory")
     parser.add_argument("--lang_dist_json", type=str, default="language_distribution.json", help="Language distribution JSON filename")
     parser.add_argument("--draw_only", action="store_true", help="Only draw the figures")
     args = parser.parse_args()
