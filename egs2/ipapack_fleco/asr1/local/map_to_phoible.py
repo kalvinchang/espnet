@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 from pathlib import Path
 import shutil
-from typing import Dict, List, Sequence, Optional
+from typing import Dict, List, Sequence, Optional, Set, Tuple
 from argparse import ArgumentParser
 import pandas as pd
 import re
@@ -58,6 +58,7 @@ def get_iso6393(
 ) -> str | None:
     match dataset:
         case "doreco":
+            language_code = language_code.split("-")[-1]
             try:
                 code = glottomap_codes.get(_DORECO_MAPPINGS.get(language_code, language_code))
                 if code is None:
@@ -98,28 +99,27 @@ def _tokenize_string(string: str, shared_tokenizer: LongestTokenizer | IpaSegmen
     return shared_tokenizer.segment(string, True)
 
 
-def extract_vocabulary(
-    train_text_path: Path,
-    dump_dir: Path,
+def _extract_dataset_vocabulary(
+    language_mappings: Dict[str, str],
+    dataset_text_path: Path,
     phoneme_indexer: PhoneticAttributeIndexer,
     glottomap: Dict[str, Dict[str, str]],
     phonepiece_pretokenized: bool = False,
     allow_partial_segmentation: bool = False,
-) -> Dict[str, List[str]]:
+) -> Tuple[Dict[str, Set[str]], Set[str]]:
+    phoneme_list = phoneme_indexer.full_subset_attributes.phonemes.tolist()
+    supported_phonemes = set(phoneme_list)
+    shared_tokenizer = IpaSegmenter(phoneme_list) if allow_partial_segmentation else LongestTokenizer(phoneme_list)
+    phonepiece = read_ipa() if phonepiece_pretokenized else None
     delimiters = re.compile("[ ˈ]")
     inventory = set()
-    inventories: dict[str, set[str]] = {}
     glottomap_codes = glottomap["code"]
     glottomap_closest = glottomap["closest"]
 
-    phoneme_list = phoneme_indexer.full_subset_attributes.phonemes.tolist()
-    language_mappings = {}
-    supported_phonemes = set(phoneme_list)
+    inventories: dict[str, Set[str]] = {}
     missing_phonemes = set()
-    shared_tokenizer = IpaSegmenter(phoneme_list) if allow_partial_segmentation else LongestTokenizer(phoneme_list)
-    phonepiece = read_ipa() if phonepiece_pretokenized else None
 
-    with (train_text_path).open("r", encoding="utf-8") as file:
+    with (dataset_text_path).open("r", encoding="utf-8") as file:
         last_language = ""
         language = ""
 
@@ -144,6 +144,12 @@ def extract_vocabulary(
                     print(utt_id, language_code, dataset)
                     raise
 
+                if language_code in language_mappings:
+                    raise ValueError(
+                        f"Duplicate language {language_code} found. "
+                        "Either utt_ids are not correctly sorted "
+                        "or additional test sets contain seen languages"
+                    )
                 language_mappings[language_code] = language
                 inventory = inventories.get(language)
                 if inventory is None:
@@ -183,6 +189,42 @@ def extract_vocabulary(
 
                 inventory.add(subsegment)
 
+    return inventories, missing_phonemes
+
+
+def extract_vocabulary(
+    train_text_path: Path,
+    dump_dir: Path,
+    phoneme_indexer: PhoneticAttributeIndexer,
+    glottomap: Dict[str, Dict[str, str]],
+    phonepiece_pretokenized: bool = False,
+    allow_partial_segmentation: bool = False,
+    unseen_test_sets: Optional[List[str]] = None,
+) -> Dict[str, List[str]]:
+    language_mappings = {}
+
+    inventories, missing_phonemes = _extract_dataset_vocabulary(
+        language_mappings,
+        train_text_path,
+        phoneme_indexer,
+        glottomap,
+        phonepiece_pretokenized,
+        allow_partial_segmentation,
+    )
+
+    if unseen_test_sets:
+        for test_set in unseen_test_sets:
+            data_inventories, data_missing = _extract_dataset_vocabulary(
+                language_mappings,
+                dump_dir / test_set / "text",
+                phoneme_indexer,
+                glottomap,
+                phonepiece_pretokenized,
+                allow_partial_segmentation,
+            )
+            inventories |= data_inventories
+            missing_phonemes |= data_missing
+
     with (dump_dir / "inventories.json").open("w", encoding="utf-8") as file:
         # Sort inventories for consistency
         inventory_lists = {
@@ -207,6 +249,7 @@ def collect_inventories(
     glottolog_languages: Path,
     phonepiece_pretokenized: bool = False,
     skip: Optional[str] = None,
+    unseen_test_sets: Optional[List[str]] = None,
 ) -> None:
     with open("local/allophoible/allophoible_v2.csv", "r", encoding="utf-8") as file:
         phoneme_indexer = PhoneticAttributeIndexer(
@@ -234,6 +277,7 @@ def collect_inventories(
             phoneme_indexer,
             glottomap,
             phonepiece_pretokenized,
+            unseen_test_sets=unseen_test_sets,
         )
 
     if missing_phonemes := inventory_lists.get("MISSING"):
@@ -392,6 +436,11 @@ def main(args: Sequence[str]) -> None:
         action="store_true",
         help="Pretokenize with phonepiece - e.g. to identify missing phonemes in the allophoible tokenizer",
     )
+    parser.add_argument(
+        "--unseen_test_sets",
+        default="",
+        help="Whitespace separated list of directory names of test sets containing only unseen languages for which the inventory should be extracted. Phonemes from this test set will not be remapped or added to the shared inventory for training.",
+    )
     skip_group = parser.add_mutually_exclusive_group()
     skip_group.add_argument(
         "--skip_vocab_generation",
@@ -419,6 +468,7 @@ def main(args: Sequence[str]) -> None:
         arguments.glottolog_languages,
         arguments.phonepiece_pretokenized,
         skip,
+        arguments.unseen_test_sets.split(),
     )
 
 

@@ -14,6 +14,7 @@ SECONDS=0
 
 train_data_dir=
 valid_data_dir=
+unseen_test_sets=
 
 
 log() {
@@ -61,7 +62,7 @@ if [ ${stage} -eq 2 ] && [ ${stop_stage} -ge 2 ]; then
     # create file of articulatory features for auxiliary CTC
     python local/create_artic_feats.py --data_dir "${train_data_dir}" --write_vocabulary
     python local/create_artic_feats.py --data_dir "${valid_data_dir}"
-    python local/map_to_phoible.py --skip_mapping
+    python local/map_to_phoible.py --skip_mapping --unseen_test_sets "${unseen_test_sets}"
 fi
 
 log "Successfully finished. [elapsed=${SECONDS}s]"

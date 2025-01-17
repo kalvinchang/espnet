@@ -159,12 +159,12 @@ class EmbeddingCompositionLayer(nn.Module):
 
         assert blank_offset > 0, "Blank offset must be at least 1"
 
-        self._output_size = feature_table.shape[0] + blank_offset
+        additional_tokens = blank_offset + additional_special_tokens
+        self._output_size = feature_table.shape[0] + additional_tokens
         self._blank_offset = blank_offset
         self._additional_special_tokens = additional_special_tokens
 
         # Add blank embedding + embeddings for every other special symbol if blank_offset > 1 or additional_special_tokens > 0
-        additional_tokens = blank_offset + additional_special_tokens
         num_categories = torch.cat((LongTensor([0] * additional_tokens), feature_table.max(0).values)) + 1
         unused_categories = torch.cat(
             (
