@@ -10,13 +10,13 @@ preprocessor_conf:
     speech_resolution: 0.02
     speech_init_silence: 20
     text_prev_apply_prob: 0.5 # whether to condition on text_prev
-        # if text_prev is <na>, applying text_prev doesn't do anything
-        #   thus for ASR and phoneme recognition, this doesn't do anything
-        #   but for G2P and P2G, what removing the context does is to
-        #   rely only on the audio
-        # TODO: fully removing the context might be too harsh though?
-        #   may want to try masking
-    time_apply_prob: 0.0  # we don't have timestamps
+    # if text_prev is <na>, applying text_prev doesn't do anything
+    #   thus for ASR and phoneme recognition, this doesn't do anything
+    #   but for G2P and P2G, what removing the context does is to
+    #   rely only on the audio
+    # TODO: fully removing the context might be too harsh though?
+    #   may want to try masking
+    time_apply_prob: 0.0 # we don't have timestamps
     notime_symbol: "<notimestamps>"
     first_time_symbol: "<0.00>"
     last_time_symbol: "<20.00>"
