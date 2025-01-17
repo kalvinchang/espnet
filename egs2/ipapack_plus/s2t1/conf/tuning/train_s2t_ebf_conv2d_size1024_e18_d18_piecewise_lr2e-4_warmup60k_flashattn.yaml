@@ -16,7 +16,10 @@ preprocessor_conf:
     #   rely only on the audio
     # TODO: fully removing the context might be too harsh though?
     #   may want to try masking
-    time_apply_prob: 0.0 # we don't have timestamps
+    time_apply_prob: 1.0
+    # we don't have timestamps
+    #   time_apply_prob is the probability at which timestamps are KEPT
+    #   if the code to remove timestamps is applied, then the timestamp token will be duplicated
     notime_symbol: "<notimestamps>"
     first_time_symbol: "<0.00>"
     last_time_symbol: "<20.00>"
