@@ -28,7 +28,7 @@ def subsample(olddir, newdir, dataset, ratio, suffix=""):
     os.system(f"echo flac.ark > {currentdir}/audio_format")
 
     # 2. subsampling
-    for file in ["spk2utt", "utt2spk", "wav.scp", "utt2num_samples"]:
+    for file in ["utt2spk", "wav.scp", "utt2num_samples"]:
         os.system(f"awk 'NR % {ratio} == 1' {olddir}/{dataset}/{file} > {currentdir}/{file}")
         # the original wav.scp does not contain the task in the utterance ID
         # we need to add the task to the utterance ID to ensure wav.scp contains unique utterance IDs
@@ -36,7 +36,22 @@ def subsample(olddir, newdir, dataset, ratio, suffix=""):
             os.system(f"awk \'{{ $1 = $1 \"_{task}\"; print }}\' OFS=\" \" dump/raw/train_1000/wav.scp >> {currentdir}/{file}.tmp")
         os.system(f"mv {currentdir}/{file}.tmp {currentdir}/{file}")
 
-    # note that each file currently contains the same utterances across each row
+    # spk2utt should be handled separately
+    #   map same speaker ("aaaaa") to all utterances on one line
+    file = "spk2utt"
+    os.system(f"awk 'NR % {ratio} == 1' {olddir}/{dataset}/{file} > {currentdir}/{file}")
+    with open(f"{currentdir}/{file}", "r") as spk2utt, open(f"{currentdir}/{file}.tmp", "w") as spk2utt_tmp:
+        lines = spk2utt.readlines()
+        assert len(lines) == 1
+
+        lines = lines.split(' ')
+        spk2utt_tmp.write(lines[0])  # speaker
+        spk2utt_tmp.write(' ')
+        spk2utt_tmp.write(' '.join(lines[1:]))  # utterances
+    os.system(f"mv {currentdir}/{file}.tmp {currentdir}/{file}")
+
+    # note that we assume each file
+    #   contains the same utterances across each row
     for file in ["text", "text.prev", "text.ctc", "text.asr", "text.asr_prev", "text.asr_ctc", "text.g2p", "text.g2p_prev", "text.g2p_ctc", "text.p2g", "text.p2g_prev", "text.p2g_ctc"]:
         os.system(f"awk 'NR % {ratio} == 1' {olddir}/{dataset}/{file} > {currentdir}/texts/{file}")
 
