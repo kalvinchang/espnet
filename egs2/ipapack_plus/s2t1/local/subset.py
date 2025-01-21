@@ -30,11 +30,13 @@ def subsample(olddir, newdir, dataset, ratio, suffix=""):
     # 2. subsampling
     for file in ["spk2utt", "utt2spk", "wav.scp", "utt2num_samples"]:
         os.system(f"awk 'NR % {ratio} == 1' {olddir}/{dataset}/{file} > {currentdir}/{file}")
-        for i in range(4): # repeat 4 times for 4 tasks
-            os.system(f"cat {currentdir}/{file} >> {currentdir}/{file}.tmp")
+        # the original wav.scp does not contain the task in the utterance ID
+        # we need to add the task to the utterance ID to ensure wav.scp contains unique utterance IDs
+        for task in ["pr", "asr", "g2p", "p2g"]: # repeat 4 times for 4 tasks
+            os.system(f"awk \'{{ $1 = $1 \"_{task}\"; print }}\' OFS=\" \" dump/raw/train_1000/wav.scp >> {currentdir}/{file}.tmp")
         os.system(f"mv {currentdir}/{file}.tmp {currentdir}/{file}")
 
-
+    # note that each file currently contains the same utterances across each row
     for file in ["text", "text.prev", "text.ctc", "text.asr", "text.asr_prev", "text.asr_ctc", "text.g2p", "text.g2p_prev", "text.g2p_ctc", "text.p2g", "text.p2g_prev", "text.p2g_ctc"]:
         os.system(f"awk 'NR % {ratio} == 1' {olddir}/{dataset}/{file} > {currentdir}/texts/{file}")
 
