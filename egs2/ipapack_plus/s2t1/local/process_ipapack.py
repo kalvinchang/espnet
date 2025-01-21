@@ -74,6 +74,7 @@ def get_lang_duration(utt2lang, process_dir, lang_dist_json):
 
 
 def main(root_dir, output_dir, lang_dist_json, draw_only=False):
+    # from the source directory
     ROOT_DUMP_DIR = os.path.join(root_dir, "dump/raw")
     ROOT_DATA_DIR = os.path.join(root_dir, "data")
     ROOT_DF_DIR = os.path.join(root_dir, "downloads")
@@ -88,7 +89,7 @@ def main(root_dir, output_dir, lang_dist_json, draw_only=False):
     combined_df = pd.concat([normalize_df, doreco_df])
     utt2lang = {row["utt_id"]: row["lang"] for _, row in combined_df.iterrows()}
 
-
+    # target directory
     os.makedirs(output_dir, exist_ok=True)
     image_dir = os.path.join(output_dir, "images")
     os.makedirs(image_dir, exist_ok=True)
@@ -237,7 +238,7 @@ def main(root_dir, output_dir, lang_dist_json, draw_only=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process IPA Pack data")
     parser.add_argument("--root_dir", type=str, default="/ocean/projects/cis210027p/kchang1/espnet/egs2/ipapack_plus/asr1", help="Root directory")
-    parser.add_argument("--output_dir", type=str, default="OWSM_format", help="Output directory")
+    parser.add_argument("--output_dir", type=str, default="dump/raw", help="Output directory")
     parser.add_argument("--lang_dist_json", type=str, default="language_distribution.json", help="Language distribution JSON filename")
     parser.add_argument("--draw_only", action="store_true", help="Only draw the figures")
     args = parser.parse_args()
