@@ -106,7 +106,7 @@ def _extract_dataset_vocabulary(
     glottomap: Dict[str, Dict[str, str]],
     phonepiece_pretokenized: bool = False,
     allow_partial_segmentation: bool = False,
-) -> Tuple[Dict[str, Set[str]], Set[str]]:
+) -> Tuple[Dict[str, List[str]], Set[str]]:
     phoneme_list = phoneme_indexer.full_subset_attributes.phonemes.tolist()
     supported_phonemes = set(phoneme_list)
     shared_tokenizer = IpaSegmenter(phoneme_list) if allow_partial_segmentation else LongestTokenizer(phoneme_list)
@@ -189,7 +189,8 @@ def _extract_dataset_vocabulary(
 
                 inventory.add(subsegment)
 
-    return inventories, missing_phonemes
+    # Sort inventories for consistency and ensure all phonemes are normalized
+    return {language: sorted(map(_normalize_phoneme, inventory)) for language, inventory in inventories.items()}, missing_phonemes
 
 
 def extract_vocabulary(
@@ -226,21 +227,17 @@ def extract_vocabulary(
             missing_phonemes |= data_missing
 
     with (dump_dir / "inventories.json").open("w", encoding="utf-8") as file:
-        # Sort inventories for consistency
-        inventory_lists = {
-            language: sorted(phonemes) for language, phonemes in inventories.items()
-        }
         if missing_phonemes:
-            inventory_lists["MISSING"] = sorted(missing_phonemes)
+            inventories["MISSING"] = sorted(missing_phonemes)
 
-        json.dump(inventory_lists, file)
+        json.dump(inventories, file)
 
     with (dump_dir / "supported_languages.json").open("w", encoding="utf-8") as file:
         json.dump(language_mappings, file)
 
     print("Phoneme inventories and supported languages extracted")
 
-    return inventory_lists
+    return inventories
 
 
 def collect_inventories(

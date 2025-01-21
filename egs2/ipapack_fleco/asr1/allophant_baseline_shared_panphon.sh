@@ -9,6 +9,7 @@ set -o pipefail
 train_set="train"
 valid_set="dev"
 test_sets="test_fleurs test_doreco"
+unseen_test_sets="test_doreco"
 
 encoder=allophant
 asr_config=conf/tuning/train_asr_${encoder}_shared_panphon.yaml

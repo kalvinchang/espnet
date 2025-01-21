@@ -230,6 +230,14 @@ class EmbeddingCompositionLayer(nn.Module):
         return (inputs @ composed_embeddings) / self._scale_factor
 
 
+def _normalize_phoneme(feature_type: str, phoneme: str) -> str:
+    if feature_type == "phoible":
+        # Special case for PHOIBLE
+        return unicodedata.normalize("NFD", phoneme).replace("ç", "ç")
+    else:
+        return unicodedata.normalize("NFD", phoneme)
+
+
 class AllophantLayers(AbsEncoder):
     @typechecked
     def __init__(
@@ -255,18 +263,12 @@ class AllophantLayers(AbsEncoder):
             with open(phoneme_inventory_file, "r", encoding="utf-8") as file:
                 # Normalize vocabulary for feature compatibility and filter special tokens
                 phoneme_inventory = [
-                    unicodedata.normalize("NFD", line) for line in map(str.strip, file)
+                    _normalize_phoneme(feature_type, line) for line in map(str.strip, file)
                     # Ignore special tokens
                     if not (line.startswith("<") and line.endswith(">"))
                 ]
         else:
             phoneme_inventory = None
-
-        if composition_inventories_file is not None:
-            with open(composition_inventories_file, "r", encoding="utf-8") as file:
-                self._composition_inventories = json.load(file)
-        else:
-            self._composition_inventories = None
 
         # Used by ESPnetAsrModel to identify encoders that take `utt_id` as an input
         # Required if `use_allophone_layer` is `True`
@@ -305,6 +307,19 @@ class AllophantLayers(AbsEncoder):
             language_inventories=allophone_languages,
             allophones_from_allophoible=use_allophone_layer,
         )
+
+        if composition_inventories_file is not None:
+            with open(composition_inventories_file, "r", encoding="utf-8") as file:
+                self._composition_inventories = json.load(file)
+                self._composition_features = {
+                    language: self._indexer.full_attributes.subset(
+                        [_normalize_phoneme(feature_type, phoneme) for phoneme in inventory],
+                        self._indexer.composition_features.copy(),
+                    ).dense_feature_table.long() for language, inventory in self._composition_inventories.items()
+                }
+        else:
+            self._composition_inventories = None
+            self._composition_features = None
 
         if use_allophone_layer:
             if self._indexer.allophone_data is None:
@@ -367,17 +382,32 @@ class AllophantLayers(AbsEncoder):
         return self._output_size
 
     def _utterance_langcodes(self, utt_id_batch: List[str]) -> Iterator[str]:
+        assert self._language_map is not None
         for i in utt_id_batch:
-            yield self._separator.split(i, 2)[1]
+            yield self._language_map[self._separator.split(i, 2)[1]]
 
-    def _inference_with_inventory(self, inputs: Tensor, inventory: List[str]) -> Tensor:
-        return self._phoneme_composition_layer(
+    def _inference_with_inventory(self, inputs: Tensor, features: Tensor, pad_to_output_size: bool = True) -> Tensor:
+        composition_output = self._phoneme_composition_layer(
             inputs,
-            self._indexer.full_attributes.subset(
-                inventory,
-                self._indexer.composition_features.copy(),
-            ).dense_feature_table.long()
+            features.to(inputs.device)
         )
+
+        if not pad_to_output_size:
+            return composition_output
+
+        pad_size = self._output_size - composition_output.shape[-1]
+        tail = self._phoneme_composition_layer._additional_special_tokens
+        # Pad with the smallest bfloat16 value between the phonemes and special symbol
+        return torch.cat((
+            composition_output[..., :-tail],
+            torch.full(
+                (*composition_output.shape[:2], pad_size),
+                torch.finfo(torch.bfloat16).min,
+                dtype=composition_output.dtype,
+                device=composition_output.device
+            ),
+            composition_output[..., -tail:],
+        ), dim=2)
 
     def forward(
         self,
@@ -396,20 +426,19 @@ class AllophantLayers(AbsEncoder):
 
         output = self._projection_layer(xs_pad)
 
-        if use_language_vocabulary and target_feature_indices is None and self._composition_inventories:
+        if use_language_vocabulary and target_feature_indices is None and self._composition_features is not None:
             language_codes = list(self._utterance_langcodes(utt_id))
             first_code = language_codes[0]
 
             if all(code == first_code for code in language_codes):
                 # Fast path if the batch consists only of utterances in a single language
                 output = self._inference_with_inventory(
-                    output, self._composition_inventories[first_code]
+                    output, self._composition_features[first_code]
                 )
             else:
-                # Encode each sample separately with its inventory
                 output = torch.cat([
                     self._inference_with_inventory(
-                        output[None, i], self._composition_inventories[code]
+                        output[None, i], self._composition_features[code]
                     ) for i, code in enumerate(language_codes)
                 ])
         else:

@@ -1,6 +1,6 @@
 seed: 11711
 freeze_param: [
-  "frontend.upstream.model.feature_extractor"
+  "frontend.upstream.upstream.model.feature_extractor"
 ]
 
 frontend: s3prl
@@ -223,7 +223,7 @@ model_conf:
 
 aux_ctc_tasks: ["syl", "son", "cons", "cont", "delrel", "lat", "nas", "strid", "voi", "sg", "cg", "ant", "cor", "distr", "lab", "hi", "lo", "back", "round", "velaric", "tense", "long"]
 
-log_interval: 200
+log_interval: 1
 num_att_plot: 0
 num_workers: 32
 sort_in_batch: descending
@@ -231,7 +231,7 @@ sort_batch: descending
 batch_type: numel
 batch_bins: 20000000
 accum_grad: 4
-max_epoch: 2
+max_epoch: 10
 patience: none
 init: xavier_uniform
 best_model_criterion:
@@ -250,7 +250,7 @@ optim_conf:
     weight_decay: 0.000001
 scheduler: warmuplr
 scheduler_conf:
-    warmup_steps: 2500
+    warmup_steps: 625 # 2500
 
 ctc_conf:
     zero_infinity: true
