@@ -201,9 +201,10 @@ def extract_vocabulary(
     phonepiece_pretokenized: bool = False,
     allow_partial_segmentation: bool = False,
     unseen_test_sets: Optional[List[str]] = None,
-) -> Dict[str, List[str]]:
+) -> Tuple[Dict[str, List[str]], List[str]]:
     language_mappings = {}
 
+    # Extract phoneme inventories for all languages in the training set
     inventories, missing_phonemes = _extract_dataset_vocabulary(
         language_mappings,
         train_text_path,
@@ -212,8 +213,15 @@ def extract_vocabulary(
         phonepiece_pretokenized,
         allow_partial_segmentation,
     )
+    training_languages = list(inventories)
+
+    # Store all languages from the training set
+    with (dump_dir / "training_languages.json").open("w", encoding="utf-8") as file:
+        json.dump({"languages": training_languages}, file)
 
     if unseen_test_sets:
+        # Collect additional inventories from test sets consisting only of unseen languages,
+        # ensuring no inventories from the training data or other test sets are overwritten
         for test_set in unseen_test_sets:
             data_inventories, data_missing = _extract_dataset_vocabulary(
                 language_mappings,
@@ -226,33 +234,41 @@ def extract_vocabulary(
             inventories |= data_inventories
             missing_phonemes |= data_missing
 
+    # Store inventories, including phonemes with missing features for debugging purposes
     with (dump_dir / "inventories.json").open("w", encoding="utf-8") as file:
         if missing_phonemes:
             inventories["MISSING"] = sorted(missing_phonemes)
 
         json.dump(inventories, file)
 
+    # Store all mappings from the diverse language tags in the utterance IDs to normalized ISO639-3 codes
     with (dump_dir / "supported_languages.json").open("w", encoding="utf-8") as file:
         json.dump(language_mappings, file)
 
     print("Phoneme inventories and supported languages extracted")
 
-    return inventories
+    return inventories, training_languages
 
 
-def collect_inventories(
+def collect_and_map_inventories(
     dump_dir: Path,
     data_dir: Path,
     glottolog_languages: Path,
     phonepiece_pretokenized: bool = False,
     skip: Optional[str] = None,
     unseen_test_sets: Optional[List[str]] = None,
+    ignore_language_allophones: Optional[Set[str]] = None,
+    mapping_details_path: Optional[Path] = None,
 ) -> None:
+    if ignore_language_allophones is None:
+        ignore_language_allophones = set()
+
     with open("local/allophoible/allophoible_v2.csv", "r", encoding="utf-8") as file:
         phoneme_indexer = PhoneticAttributeIndexer(
             FeatureSet.PHOIBLE, file, allophones_from_allophoible=True
         )
 
+    # Glottolog data for mapping Glottocodes to ISO639-3
     glottomap = pd.read_csv(glottolog_languages)
     glottomap = glottomap[["ID", "ISO639P3code", "Closest_ISO369P3code"]].set_index(
         "ID"
@@ -267,8 +283,11 @@ def collect_inventories(
     if skip == "vocab":
         with (dump_dir / "inventories.json").open("r", encoding="utf-8") as file:
             inventory_lists = json.load(file)
+
+        with (dump_dir / "training_languages.json").open("r", encoding="utf-8") as file:
+            training_languages = json.load(file)["languages"]
     else:
-        inventory_lists = extract_vocabulary(
+        inventory_lists, training_languages = extract_vocabulary(
             train_text_path,
             dump_dir,
             phoneme_indexer,
@@ -294,6 +313,7 @@ def collect_inventories(
     if not token_backup_path.exists():
         shutil.copy2(token_path, token_backup_path)
 
+    # Read existing token inventory from ESPnet
     with token_path.open("r", encoding="utf-8") as file:
         clusters = []
         current = []
@@ -323,32 +343,49 @@ def collect_inventories(
         start_special_tokens = sum(clusters, [])
 
     with open("local/allophoible/allophoible_v2.csv", "r", encoding="utf-8") as file:
-        # Resolve allophone inventories for all languages in the data
+        # Resolve allophone inventories for all languages in the trainingdata
         phoneme_indexer = PhoneticAttributeIndexer(
             FeatureSet.PHOIBLE,
             file,
-            language_inventories=list(inventory_lists),
+            language_inventories=[
+                language for language in training_languages
+                if language not in ignore_language_allophones
+            ],
             allophones_from_allophoible=True,
         )
 
     # Map to PHOIBLE inventories with allophone information
     phoneme_mappings = {}
-    for language, inventory in tqdm(inventory_lists.items()):
-        if phoneme_indexer.allophone_inventory(language).size == 0:
+    mapping_details = {}
+    for language in tqdm(training_languages):
+        # Default to empty mapping if no allophones are available for a language
+        target_inventory = phoneme_indexer.allophone_inventory(language)
+        if target_inventory.size == 0:
             tqdm.write(
                 f"WARNING: No allophone inventory found for {language}, skipping..."
             )
-            # Default to empty mapping
             phoneme_mappings[language] = {}
             continue
 
-        phoneme_mappings[language] = phoneme_indexer.map_language_inventory(
-            [inventory], language
+        # Remap the inventory to PHOIBLE
+        mapping = phoneme_indexer.map_language_inventory(
+            [inventory_lists[language]], language
         )[0]
+        phoneme_mappings[language] = mapping
+        mapping_details[language] = {
+            "mapping": mapping,
+            "source": inventory_lists[language],
+            "target": target_inventory.index.tolist(),
+        }
 
     with (dump_dir / "mappings.json").open("w", encoding="utf-8") as file:
         json.dump(phoneme_mappings, file)
 
+    if mapping_details_path is not None:
+        with mapping_details_path.open("w", encoding="utf-8") as file:
+            json.dump(mapping_details, file, ensure_ascii=False)
+
+    # TODO: Remap full training data with inventory mappings
     return
 
     with token_path.open("w", encoding="utf-8") as file:
@@ -438,6 +475,16 @@ def main(args: Sequence[str]) -> None:
         default="",
         help="Whitespace separated list of directory names of test sets containing only unseen languages for which the inventory should be extracted. Phonemes from this test set will not be remapped or added to the shared inventory for training.",
     )
+    parser.add_argument(
+        "--ignore_language_allophones",
+        default="",
+        help="Whitespace separated list of languages to ignore during phoneme mapping. Required for all languages without allophone data in PHOIBLE"
+    )
+    parser.add_argument(
+        "--mapping_details",
+        type=Path,
+        help="Path to a JSON file containing detailed information about the phoneme mapping process"
+    )
     skip_group = parser.add_mutually_exclusive_group()
     skip_group.add_argument(
         "--skip_vocab_generation",
@@ -459,13 +506,15 @@ def main(args: Sequence[str]) -> None:
     else:
         skip = None
 
-    collect_inventories(
+    collect_and_map_inventories(
         arguments.dump_dir,
         arguments.data_dir,
         arguments.glottolog_languages,
         arguments.phonepiece_pretokenized,
         skip,
         arguments.unseen_test_sets.split(),
+        set(arguments.ignore_language_allophones.split()),
+        arguments.mapping_details,
     )
 
 

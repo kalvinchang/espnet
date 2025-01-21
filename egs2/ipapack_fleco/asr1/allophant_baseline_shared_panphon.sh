@@ -18,12 +18,13 @@ aux_ctc="syl son cons cont delrel lat nas strid voi sg cg ant cor distr lab hi l
 
 
 ./asr.sh \
+    --asr_tag "debug_2" \
     --auxiliary_data_tags "${aux_ctc}" \
-    --post_process_local_data_opts "--stage 2" \
-    --stage 2 \
-    --stop_stage 10 \
+    --post_process_local_data_opts "--stage 2 --unseen_test_sets \"${unseen_test_sets}\"" \
+    --stage 11 \
+    --stop_stage 11 \
     --ngpu 1 \
-    --nj 32 \
+    --nj 2 \
     --gpu_inference true \
     --inference_nj 4 \
     --token_type word \

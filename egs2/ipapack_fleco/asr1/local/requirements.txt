@@ -1,7 +1,10 @@
 webdataset
 panphon
+phonepiece
 ipatok
 lhotse
 tqdm
 pandas
 scipy
+allophant
+marisa_trie
