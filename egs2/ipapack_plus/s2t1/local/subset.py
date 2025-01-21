@@ -32,8 +32,10 @@ def subsample(olddir, newdir, dataset, ratio, suffix=""):
         os.system(f"awk 'NR % {ratio} == 1' {olddir}/{dataset}/{file} > {currentdir}/{file}")
         # the original wav.scp does not contain the task in the utterance ID
         # we need to add the task to the utterance ID to ensure wav.scp contains unique utterance IDs
-        for task in ["pr", "asr", "g2p", "p2g"]: # repeat 4 times for 4 tasks
-            os.system(f"awk \'{{ $1 = $1 \"_{task}\"; print }}\' OFS=\" \" dump/raw/train_1000/wav.scp >> {currentdir}/{file}.tmp")
+        # repeat 4 times for 4 tasks
+        for task in ["asr", "g2p", "p2g", "pr"]:
+            # take the first column which is the utterance ID
+            os.system(f"awk \'{{ $1 = $1 \"_{task}\"; print }}\' OFS=\" \" {currentdir}/{file} >> {currentdir}/{file}.tmp")
         os.system(f"mv {currentdir}/{file}.tmp {currentdir}/{file}")
 
     # spk2utt should be handled separately
@@ -43,8 +45,7 @@ def subsample(olddir, newdir, dataset, ratio, suffix=""):
     with open(f"{currentdir}/{file}", "r") as spk2utt, open(f"{currentdir}/{file}.tmp", "w") as spk2utt_tmp:
         lines = spk2utt.readlines()
         assert len(lines) == 1
-
-        lines = lines.split(' ')
+        lines = lines[0].split(' ')
         spk2utt_tmp.write(lines[0])  # speaker
         spk2utt_tmp.write(' ')
         spk2utt_tmp.write(' '.join(lines[1:]))  # utterances
@@ -62,6 +63,10 @@ def subsample(olddir, newdir, dataset, ratio, suffix=""):
         os.system(f"cat {currentdir}/texts/{file} >> {currentdir}/text.prev")
     for file in ["text.ctc", "text.asr_ctc", "text.g2p_ctc", "text.p2g_ctc"]:
         os.system(f"cat {currentdir}/texts/{file} >> {currentdir}/text.ctc")
+
+    # we need to sort the files by utterance ID
+    # we concatenated each task's utterances separately, which messes up the order
+    os.system(f"utils/fix_data_dir.sh {currentdir}")
 
     print("Finished!")
 
