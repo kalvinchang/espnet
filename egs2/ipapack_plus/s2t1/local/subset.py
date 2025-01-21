@@ -66,7 +66,7 @@ def subsample(olddir, newdir, dataset, ratio, suffix=""):
 
     # we need to sort the files by utterance ID
     # we concatenated each task's utterances separately, which messes up the order
-    os.system(f"utils/fix_data_dir.sh {currentdir}")
+    os.system(f"utils/fix_data_dir.sh {currentdir} --utt_extra_files utt2num_samples text.ctc text.prev")
 
     print("Finished!")
 
