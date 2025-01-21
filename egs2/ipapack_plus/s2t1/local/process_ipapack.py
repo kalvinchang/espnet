@@ -152,29 +152,34 @@ def main(root_dir, output_dir, lang_dist_json, draw_only=False):
             # Write text file
             # phoneme recognition
             #   text: phonemes, with task tokens
-            #   text_prev: previous context for phoneme recognition (none for now)
+            #   text.prev: previous context for phoneme recognition (none for now)
             #   text.ctc: phonemes, no task tokens
             # speech recognition (orthography as output)
             #   text.asr: phonemes, with task tokens
             #   text.asr_ctc: phonemes, no task tokens
-            #   text_prev (above): previous context for ASR (none for now)
+            #   text.asr_prev: previous context for ASR (none for now)
             # G2P (grapheme/orthography to phoneme)
             #   text.g2p: phonemes, with task tokens
             #   text.g2p_prev: previous context for G2P (graphemes)
-            #   text.ctc (above): phonemes, no task tokens
+            #   text.g2p_ctc: phonemes, no task tokens
             # P2G (phoneme to grapheme/orthography)
             #   text.p2g: with task tokens
             #   text.p2g_prev: previous context for P2G (phonemes)
-            #   text.asr_ctc (above): graphemes, no task tokens
+            #   text.p2g_ctc: graphemes, no task tokens
+            # note - the contents for each file across tasks may be the same
+            #   but the utterance IDs need to be different
             with open(os.path.join(process_dir, "text"), "w") as pr_text, \
                 open(os.path.join(process_dir, "text.prev"), "w") as prev_text, \
                 open(os.path.join(process_dir, "text.ctc"), "w") as text_ctc, \
                 open(os.path.join(process_dir, "text.asr"), "w") as asr_text, \
+                open(os.path.join(process_dir, "text.asr_prev"), "w") as asr_text_prev, \
                 open(os.path.join(process_dir, "text.asr_ctc"), "w") as asr_text_ctc, \
                 open(os.path.join(process_dir, "text.g2p"), "w") as g2p_text, \
                 open(os.path.join(process_dir, "text.g2p_prev"), "w") as prev_g2p_text, \
+                open(os.path.join(process_dir, "text.g2p_ctc"), "w") as g2p_text_ctc, \
                 open(os.path.join(process_dir, "text.p2g"), "w") as p2g_text, \
-                open(os.path.join(process_dir, "text.p2g_prev"), "w") as prev_p2g_text :
+                open(os.path.join(process_dir, "text.p2g_prev"), "w") as prev_p2g_text, \
+                open(os.path.join(process_dir, "text.p2g_ctc"), "w") as p2g_ctc :
 
                 for utt_id, p in utt2phoneme_seq.items():
                     p = "".join([f"/{char}/" for char in p.split()])
@@ -201,15 +206,23 @@ def main(root_dir, output_dir, lang_dist_json, draw_only=False):
                         o = o.replace(" ", "")
                     o = text_normalization(o)
 
-                    pr_text.write(f"{utt_id} {LANG}{PR}{NO_TIME}{p}\n")
-                    prev_text.write(f"{utt_id} {TEXT_NA}\n")
-                    text_ctc.write(f"{utt_id} {p}\n")
-                    asr_text.write(f"{utt_id} {LANG}{ASR}{NO_TIME}{o}\n")
-                    asr_text_ctc.write(f"{utt_id} {o}\n")
-                    g2p_text.write(f"{utt_id} {LANG}{G2P}{NO_TIME}{p}\n")
-                    prev_g2p_text.write(f"{utt_id} {o}\n")
-                    p2g_text.write(f"{utt_id} {LANG}{P2G}{NO_TIME}{o}\n")
-                    prev_p2g_text.write(f"{utt_id} {p}\n")
+                    # each utterance is used 4 times
+                    # but each instance of the utterance needs a diff utt id
+                    pr_text.write(f"{utt_id}_pr {LANG}{PR}{NO_TIME}{p}\n")
+                    prev_text.write(f"{utt_id}_pr {TEXT_NA}\n")
+                    text_ctc.write(f"{utt_id}_pr {p}\n")
+
+                    asr_text.write(f"{utt_id}_asr {LANG}{ASR}{NO_TIME}{o}\n")
+                    asr_text_prev.write(f"{utt_id}_asr {TEXT_NA}\n")
+                    asr_text_ctc.write(f"{utt_id}_asr {o}\n")
+
+                    g2p_text.write(f"{utt_id}_g2p {LANG}{G2P}{NO_TIME}{p}\n")
+                    g2p_text_ctc.write(f"{utt_id}_g2p {p}\n")
+                    prev_g2p_text.write(f"{utt_id}_g2p {o}\n")
+
+                    p2g_text.write(f"{utt_id}_p2g {LANG}{P2G}{NO_TIME}{o}\n")
+                    p2g_ctc.write(f"{utt_id}_p2g {o}\n")
+                    prev_p2g_text.write(f"{utt_id}_p2g {p}\n")
 
             # Get language distribution
             lang2dur = get_lang_duration(utt2lang, process_dir, lang_dist_json)
