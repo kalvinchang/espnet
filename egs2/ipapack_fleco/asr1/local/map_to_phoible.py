@@ -155,8 +155,6 @@ def _extract_dataset_vocabulary(
                 if inventory is None:
                     inventories[language] = inventory = set()
 
-            # FIXME: Temporary workaround missing Allophoible feature
-            transcription = transcription.replace("l̴", "lˠ").replace("ɛˤ", "ɛ")
             if phonepiece is None:
                 # TODO: Temporary workaround for inconsistent diacritic ordering interfering with tokenization
                 phonemes = _tokenize_string(transcription.replace("ːˠ", "ˠː").replace("ːʲ", "ʲː").replace("ʰʷ", "ʷʰ").replace("ʰʲ", "ʲʰ"), shared_tokenizer)
@@ -254,6 +252,7 @@ def collect_and_map_inventories(
     dump_dir: Path,
     data_dir: Path,
     glottolog_languages: Path,
+    split: str = "train",
     phonepiece_pretokenized: bool = False,
     skip: Optional[str] = None,
     unseen_test_sets: Optional[List[str]] = None,
@@ -278,7 +277,7 @@ def collect_and_map_inventories(
         "closest": glottomap["Closest_ISO369P3code"].dropna().to_dict(),
     }
 
-    train_text_path = dump_dir / "train/text"
+    train_text_path = dump_dir / split / "text"
 
     if skip == "vocab":
         with (dump_dir / "inventories.json").open("r", encoding="utf-8") as file:
@@ -406,7 +405,7 @@ def collect_and_map_inventories(
     print(f"Wrote new shared inventory to {token_path}")
 
     # Backup original transcriptions
-    train_backup_path = dump_dir / "train/text.original"
+    train_backup_path = dump_dir / split / "text.original"
     if not train_backup_path.exists():
         shutil.copy2(train_text_path, train_backup_path)
 
@@ -460,6 +459,11 @@ def main(args: Sequence[str]) -> None:
         help="directory containing processed asr data from stage 4",
     )
     parser.add_argument(
+        "--split",
+        default="train",
+        help="split to use for generating inventories",
+    )
+    parser.add_argument(
         "--glottolog_languages",
         default="local/glottolog_language_data/languages.csv",
         type=Path,
@@ -510,6 +514,7 @@ def main(args: Sequence[str]) -> None:
         arguments.dump_dir,
         arguments.data_dir,
         arguments.glottolog_languages,
+        arguments.split,
         arguments.phonepiece_pretokenized,
         skip,
         arguments.unseen_test_sets.split(),
