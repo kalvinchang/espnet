@@ -1,5 +1,6 @@
 # adapted from Koenecke et al (2020)
-# https://github.com/stanford-policylab/asr-disparities/blob/master/src/utils/snippet_generation.py
+# https://github.com/stanford-policylab/asr-disparities/blob/master/
+#   src/utils/snippet_generation.py
 import glob
 import os
 import sys
@@ -11,7 +12,8 @@ from pydub import AudioSegment
 
 
 def load_coraal_text(project_path):
-    # Load CORAAL transcripts and metadata files, which are assumed to be in project_path without nesting
+    # Load CORAAL transcripts and metadata files
+    #   which are assumed to be in project_path without nesting
     file_pattern = os.path.join(project_path, "*metadata*.txt")
     filenames = glob.glob(file_pattern)
     print("metadata files", filenames)
@@ -32,7 +34,7 @@ def load_coraal_text(project_path):
         # each row tends to be short
 
         # filter out rows with pauses
-        text["pause"] = text.Content.str.contains("(pause \d+(\.\d{1,2})?)")
+        text["pause"] = text.Content.str.contains(r"(pause \d+(\.\d{1,2})?)")
         text = text[~text.pause]
 
         for spkr, sttime, content, entime in text[
@@ -84,7 +86,8 @@ def load_coraal_text(project_path):
 
 
 def find_snippet(snippets, basefile, start_time, end_time):
-    # Sanity check: given a start and end time of speech in transcript, confirm the corresponding snippet exists
+    # Sanity check: given a start and end time of speech in transcript
+    #   confirm the corresponding snippet exists
     start_time = round(start_time, 3)
     end_time = round(end_time, 3)
     match = snippets[
@@ -102,7 +105,8 @@ def find_snippet(snippets, basefile, start_time, end_time):
 
 
 def segment_filename(basefilename, start_time, end_time, buffer_val):
-    # Generate new filename for snippet subsets of .wav files (including start and end times)
+    # Generate new filename for snippet subsets of .wav files
+    #   (including start and end times)
     start_time = int((start_time - buffer_val) * 1000)  # ms
     end_time = int((end_time + buffer_val) * 1000)  # ms
     return f"{basefilename}_{start_time:012d}_{end_time:012d}"
@@ -130,13 +134,13 @@ def create_coraal_snippets(transcripts):
             backward_check
             & forward_check
             & df.interviewee
-            & ~df.content.str.contains("\[")
+            & ~df.content.str.contains(r"\[")
             & ~df.content.str.contains("]")
             & ~df.content.str.contains("<")
             & ~df.content.str.contains(">")
             & ~df.content.str.contains("/")
-            & ~df.content.str.contains("\(")
-            & ~df.content.str.contains("\)")
+            & ~df.content.str.contains(r"\(")
+            & ~df.content.str.contains(r"\)")
         )
 
         values = df[["line", "use"]].values
@@ -152,7 +156,8 @@ def create_coraal_snippets(transcripts):
                 snippets.append(snippet)
                 snippet = []
             # IMPROVEMENT: segment the file if it's too long
-            # see https://github.com/cmu-llab/s3m-aave/blob/main/data/nsp/segment.py
+            # see https://github.com/cmu-llab/s3m-aave/blob/
+            #       main/data/nsp/segment.py
         if snippet:
             snippets.append(snippet)
 
@@ -160,7 +165,8 @@ def create_coraal_snippets(transcripts):
     start_times = transcripts.start_time.values
     end_times = transcripts.end_time.values
     contents = transcripts.content.values
-    # metadata comes from the metadata files, which was merged in load_coraal_text
+    # metadata comes from the metadata files
+    #   which was merged in load_coraal_text
     gender = transcripts.Gender.values
     age = transcripts.Age.values
     age_group = transcripts["Age.Group"].values
@@ -234,11 +240,13 @@ def get_nonexistent_snippets(input_folder, snippets):
 if __name__ == "__main__":
     if len(sys.argv) != 5:
         print(
-            "Help: python local/snippet_generation.py <input_folder> <output_folder> <min_duration> <max_duration>"
+            "Help: python local/snippet_generation.py <input_folder> "
+            "<output_folder> <min_duration> <max_duration>"
         )
-        print("ex: python local/snippet_generation.py downloads downloads 0.1 30")
+        print("ex: python local/snippet_generation.py " "downloads downloads 0.1 30")
         print(
-            "Note: This script assumes all files (metadata and wav) are in <input_folder> with no nested folders"
+            "Note: This script assumes all files (metadata and wav) "
+            "are in <input_folder> with no nested folders"
         )
         exit(1)
     base_folder = sys.argv[1]
@@ -275,13 +283,13 @@ if __name__ == "__main__":
     assert (
         len(
             coraal_snippets[
-                (coraal_snippets.content.str.contains("\["))
-                | (coraal_snippets.content.str.contains("\]"))
+                (coraal_snippets.content.str.contains(r"\["))
+                | (coraal_snippets.content.str.contains(r"\]"))
                 | (coraal_snippets.content.str.contains("<"))
                 | (coraal_snippets.content.str.contains(">"))
                 | (coraal_snippets.content.str.contains("/"))
-                | (coraal_snippets.content.str.contains("\("))
-                | (coraal_snippets.content.str.contains("\)"))
+                | (coraal_snippets.content.str.contains(r"\("))
+                | (coraal_snippets.content.str.contains(r"\)"))
             ]
         )
         == 0
