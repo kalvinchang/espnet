@@ -1,0 +1,224 @@
+seed: 11711
+freeze_param: [
+  "frontend.upstream.upstream.model.feature_extractor"
+]
+
+frontend: s3prl
+frontend_conf:
+    frontend_conf:
+        upstream: xls_r_300m
+    download_dir: ./hub
+    multilayer_feature: True
+
+encoder: allophant
+encoder_conf:
+    phoneme_embedding_size: 640
+    # Blank offset 2 to handle <unk> token from Stage 5
+    blank_offset: 2
+    # <sos/eos> token from Stage 5
+    additional_special_tokens: 1
+    feature_type: phoible
+    use_allophone_layer: true
+    phoible_path: "local/allophoible/allophoible_v2.csv"
+    composition_inventories_file: dump/raw/inventories.json
+    composition_features:
+      - advancedTongueRoot
+      - anterior
+      - approximant
+      - back
+      - click
+      - consonantal
+      - constrictedGlottis
+      - continuant
+      - coronal
+      - delayedRelease
+      - distributed
+      - dorsal
+      - epilaryngealSource
+      - fortis
+      - front
+      - high
+      - labial
+      - labiodental
+      - lateral
+      - low
+      - loweredLarynxImplosive
+      - nasal
+      - periodicGlottalSource
+      - raisedLarynxEjective
+      - retractedTongueRoot
+      - round
+      - short
+      - sonorant
+      - spreadGlottis
+      - stress
+      - strident
+      - syllabic
+      - tap
+      - tense
+      - trill
+      - long
+    language_id_mapping_path: dump/raw/supported_languages.json
+    utt_id_separator: "_"
+    allophone_identity_placeholders:
+      - bel
+      - bos
+      - cym
+      - kaz
+      - mal
+      - mar
+      - nya
+      - ori
+      - orm
+      - srp
+      - tgk
+      - urd
+      - uzb
+    allophone_languages:
+      - afr
+      - amh
+      - ara
+      - aze
+      - bul
+      - ben
+      - cat
+      - ceb
+      - cmn
+      - ces
+      - dan
+      - deu
+      - ell
+      - eng
+      - spa
+      - est
+      - ful
+      - fin
+      - gle
+      - glg
+      - hau
+      - hin
+      - hrv
+      - hun
+      - ind
+      - isl
+      - ita
+      - jpn
+      - jav
+      - kat
+      - kor
+      - kir
+      - lao
+      - lit
+      - mri
+      - mkd
+      - mon
+      - msa
+      - mlt
+      - mya
+      - nob
+      - nld
+      - pan
+      - pol
+      - por
+      - ron
+      - rus
+      - snd
+      - slk
+      - slv
+      - sna
+      - som
+      - swe
+      - swa
+      - tam
+      - tel
+      - tha
+      - tur
+      - ukr
+      - vie
+      - xho
+      - yor
+      - yue
+      - zul
+
+
+model_conf:
+    extract_feats_in_collect_stats: false
+    ctc_weight: 1.0
+    interctc_weight: 0.5
+    lsm_weight: 0.1
+    length_normalized_loss: false
+    aux_ctc_share_vocab: "dump/raw/train/feature_values.json"
+    aux_ctc:
+      '0':
+        - advancedTongueRoot
+        - anterior
+        - approximant
+        - back
+        - click
+        - consonantal
+        - constrictedGlottis
+        - continuant
+        - coronal
+        - delayedRelease
+        - distributed
+        - dorsal
+        - epilaryngealSource
+        - fortis
+        - front
+        - high
+        - labial
+        - labiodental
+        - lateral
+        - low
+        - loweredLarynxImplosive
+        - nasal
+        - periodicGlottalSource
+        - raisedLarynxEjective
+        - retractedTongueRoot
+        - round
+        - short
+        - sonorant
+        - spreadGlottis
+        - stress
+        - strident
+        - syllabic
+        - tap
+        - tense
+        - trill
+        - long
+
+aux_ctc_tasks: ["advancedTongueRoot" , "anterior" , "approximant" , "back" , "click" , "consonantal" , "constrictedGlottis" , "continuant" , "coronal" , "delayedRelease" , "distributed" , "dorsal" , "epilaryngealSource" , "fortis" , "front" , "high" , "labial" , "labiodental" , "lateral" , "low" , "loweredLarynxImplosive" , "nasal" , "periodicGlottalSource" , "raisedLarynxEjective" , "retractedTongueRoot" , "round" , "short" , "sonorant" , "spreadGlottis" , "stress" , "strident" , "syllabic" , "tap" , "tense" , "trill" , "long"]
+
+log_interval: 1
+num_att_plot: 0
+# TODO: Increase to 32 again for running on the cluster
+num_workers: 4
+sort_in_batch: descending
+sort_batch: descending
+batch_type: numel
+batch_bins: 20000000
+accum_grad: 4
+max_epoch: 10
+patience: none
+init: xavier_uniform
+best_model_criterion:
+-   - valid
+    - acc
+    - max
+keep_nbest_models: 10
+
+use_amp: false
+cudnn_deterministic: false
+cudnn_benchmark: false
+
+optim: adam
+optim_conf:
+    lr: 0.0003
+    weight_decay: 0.000001
+scheduler: warmuplr
+scheduler_conf:
+    warmup_steps: 625 # 2500
+
+ctc_conf:
+    zero_infinity: true
+    elementwise_affine: false

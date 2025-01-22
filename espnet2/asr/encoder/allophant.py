@@ -5,6 +5,7 @@ from typeguard import typechecked
 import logging
 import re
 import json
+import contextlib
 
 import torch
 from torch import Tensor, LongTensor
@@ -245,7 +246,8 @@ class AllophantLayers(AbsEncoder):
         input_size: int,
         phoneme_embedding_size: int,
         composition_features: List[str],
-        allophone_languages: List[str],
+        allophone_languages: Optional[List[str]] = None,
+        allophone_identity_placeholders: Optional[List[str]] = None,
         language_id_mapping_path: Optional[str] = None,
         phoible_path: Union[str, None] = None,
         blank_offset: int = 1,
@@ -300,13 +302,14 @@ class AllophantLayers(AbsEncoder):
             case unsupported:
                 raise ValueError(f"Feature set {unsupported} if unsupported")
 
-        self._indexer = PhoneticAttributeIndexer(
-            features,
-            phoible_path,
-            composition_features,
-            language_inventories=allophone_languages,
-            allophones_from_allophoible=use_allophone_layer,
-        )
+        with contextlib.nullcontext() if phoible_path is None else open(phoible_path, "r", encoding="utf-8") as phoible_file:
+            self._indexer = PhoneticAttributeIndexer(
+                features,
+                phoible_file,
+                composition_features,
+                language_inventories=allophone_languages,
+                allophones_from_allophoible=use_allophone_layer,
+            )
 
         if composition_inventories_file is not None:
             with open(composition_inventories_file, "r", encoding="utf-8") as file:
@@ -327,6 +330,12 @@ class AllophantLayers(AbsEncoder):
                     "Model configuration using attribute embedding composition and an allophone layer"
                     " requires allophone data in the attribute indexer with but got `None`"
                 )
+            if allophone_languages is None:
+                raise ValueError(
+                    "When the allophone layer is enabled `allophone_languages` has to be specified"
+                    " for initializing allophone matrices"
+                )
+
             if phoneme_inventory_file is not None:
                 raise ValueError("Using a custom phoneme inventory together with the allophone layer is unsupported")
 

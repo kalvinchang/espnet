@@ -37,7 +37,8 @@ if __name__ == "__main__":
         artic_feats = ft.names
     else:
         from allophant.phonetic_features import PhoneticAttributeIndexer, FeatureSet
-        ft = PhoneticAttributeIndexer(FeatureSet.PHOIBLE).full_attributes
+        with open("local/allophoible/allophoible_v2.csv", "r", encoding="utf-8") as file:
+            ft = PhoneticAttributeIndexer(FeatureSet.PHOIBLE, file).full_attributes
         artic_feats = ft.feature_names
 
     feat_vocabularies = {feat: set() for feat in artic_feats}
