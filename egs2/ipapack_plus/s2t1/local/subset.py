@@ -18,9 +18,9 @@ Functions
 - combine: combine files from a list of datasets
 """
 
-def subsample(olddir, newdir, dataset, ratio, suffix=""):
+def subsample(olddir, dataset, newdir, newdataset, ratio):
     print(f"-> Subsample {dataset} by 1/{ratio}...")
-    currentdir = f"{newdir}/{dataset}{suffix}"
+    currentdir = f"{newdir}/{newdataset}"
     os.system(f"mkdir -p {currentdir}/texts")
 
     # 1. direct copy: feats_type & audio_format
@@ -29,7 +29,7 @@ def subsample(olddir, newdir, dataset, ratio, suffix=""):
 
     # 2. subsampling
     for file in ["utt2spk", "wav.scp", "utt2num_samples"]:
-        os.system(f"awk 'NR % {ratio} == 1' {olddir}/{dataset}/{file} > {currentdir}/{file}")
+        os.system(f"awk 'NR % {ratio} == 0' {olddir}/{dataset}/{file} > {currentdir}/{file}")
         # the original wav.scp does not contain the task in the utterance ID
         # we need to add the task to the utterance ID to ensure wav.scp contains unique utterance IDs
         # repeat 4 times for 4 tasks
@@ -41,7 +41,7 @@ def subsample(olddir, newdir, dataset, ratio, suffix=""):
     # spk2utt should be handled separately
     #   map same speaker ("aaaaa") to all utterances on one line
     file = "spk2utt"
-    os.system(f"awk 'NR % {ratio} == 1' {olddir}/{dataset}/{file} > {currentdir}/{file}")
+    os.system(f"awk 'NR % {ratio} == 0' {olddir}/{dataset}/{file} > {currentdir}/{file}")
     with open(f"{currentdir}/{file}", "r") as spk2utt, open(f"{currentdir}/{file}.tmp", "w") as spk2utt_tmp:
         lines = spk2utt.readlines()
         assert len(lines) == 1
@@ -54,7 +54,7 @@ def subsample(olddir, newdir, dataset, ratio, suffix=""):
     # note that we assume each file
     #   contains the same utterances across each row
     for file in ["text", "text.prev", "text.ctc", "text.asr", "text.asr_prev", "text.asr_ctc", "text.g2p", "text.g2p_prev", "text.g2p_ctc", "text.p2g", "text.p2g_prev", "text.p2g_ctc"]:
-        os.system(f"awk 'NR % {ratio} == 1' {olddir}/{dataset}/{file} > {currentdir}/texts/{file}")
+        os.system(f"awk 'NR % {ratio} == 0' {olddir}/{dataset}/{file} > {currentdir}/texts/{file}")
 
     # 3. combine text files
     for file in ["text", "text.asr", "text.g2p", "text.p2g"]:
@@ -63,6 +63,7 @@ def subsample(olddir, newdir, dataset, ratio, suffix=""):
         os.system(f"cat {currentdir}/texts/{file} >> {currentdir}/text.prev")
     for file in ["text.ctc", "text.asr_ctc", "text.g2p_ctc", "text.p2g_ctc"]:
         os.system(f"cat {currentdir}/texts/{file} >> {currentdir}/text.ctc")
+    os.system(f"rm -rf {currentdir}/texts")
 
     # we need to sort the files by utterance ID
     # we concatenated each task's utterances separately, which messes up the order
@@ -131,11 +132,17 @@ def combine(newdir, datasets, remove=False):
 
 
 if __name__ == "__main__":
+    """ # train, dev on Delta
+    basedir = "/work/hdd/bbjs/shared/powsm/s2t1/dump/raw"
+    subsample(basedir, "train_backup", basedir, "train", ratio=1)
+    subsample(basedir, "dev_backup", basedir, "dev", ratio=1)
+    """
+    
     # train_1000, dev_1000
     olddir = "/ocean/projects/cis210027p/kchang1/espnet/egs2/ipapack_plus/s2t1/dump/raw"
     newdir = "dump/raw"
     for dataset in ["train", "dev"]:
-        subsample(olddir, newdir, dataset, ratio=80, suffix="_1000")
+        subsample(olddir, dataset, newdir, f{dataset_1000}, ratio=80)
     
     # test_reduced
     olddir = "/ocean/projects/cis210027p/kchang1/espnet/egs2/ipapack_plus/s2t1/dump/raw"
@@ -149,7 +156,7 @@ if __name__ == "__main__":
         "test_mls_spanish": 20, "test_tamil": 20}
     
     for (dataset, ratio) in datasetstats.items():
-        subsample(olddir, newdir, dataset, ratio)
+        subsample(olddir, dataset, newdir, dataset, ratio)
     combine(newdir, datasetstats.keys(), remove=True)
 
     """
