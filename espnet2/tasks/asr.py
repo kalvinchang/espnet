@@ -11,6 +11,7 @@ from espnet2.asr.decoder.abs_decoder import AbsDecoder
 from espnet2.asr.decoder.hugging_face_transformers_decoder import (  # noqa: H301
     HuggingFaceTransformersDecoder,
 )
+from espnet2.asr.decoder.linear_decoder import LinearDecoder
 from espnet2.asr.decoder.mlm_decoder import MLMDecoder
 from espnet2.asr.decoder.rnn_decoder import RNNDecoder
 from espnet2.asr.decoder.s4_decoder import S4Decoder
@@ -26,6 +27,7 @@ from espnet2.asr.decoder.whisper_decoder import OpenAIWhisperDecoder
 from espnet2.asr.encoder.abs_encoder import AbsEncoder
 from espnet2.asr.encoder.allophant import AllophantLayers
 from espnet2.asr.encoder.avhubert_encoder import FairseqAVHubertEncoder
+from espnet2.asr.encoder.beats_encoder import BeatsEncoder
 from espnet2.asr.encoder.branchformer_encoder import BranchformerEncoder
 from espnet2.asr.encoder.conformer_encoder import ConformerEncoder
 from espnet2.asr.encoder.contextual_block_conformer_encoder import (
@@ -56,6 +58,7 @@ from espnet2.asr.frontend.abs_frontend import AbsFrontend
 from espnet2.asr.frontend.cnn import CNNFrontend
 from espnet2.asr.frontend.default import DefaultFrontend
 from espnet2.asr.frontend.fused import FusedFrontends
+from espnet2.asr.frontend.huggingface import HuggingFaceFrontend
 from espnet2.asr.frontend.s3prl import S3prlFrontend
 from espnet2.asr.frontend.whisper import WhisperFrontend
 from espnet2.asr.frontend.windowing import SlidingWindow
@@ -102,7 +105,8 @@ frontend_choices = ClassChoices(
         fused=FusedFrontends,
         whisper=WhisperFrontend,
         cnn=CNNFrontend,
-    ),
+        huggingface=HuggingFaceFrontend,
+    ),  # If setting this to none, please make sure to provide input_size in the config.
     type_check=AbsFrontend,
     default="default",
 )
@@ -176,6 +180,7 @@ encoder_choices = ClassChoices(
         avhubert=FairseqAVHubertEncoder,
         multiconv_conformer=MultiConvConformerEncoder,
         allophant=AllophantLayers,
+        beats=BeatsEncoder,
     ),
     type_check=AbsEncoder,
     default="rnn",
@@ -204,6 +209,9 @@ decoder_choices = ClassChoices(
         whisper=OpenAIWhisperDecoder,
         hugging_face_transformers=HuggingFaceTransformersDecoder,
         s4=S4Decoder,
+        linear_decoder=LinearDecoder,
+        # This decoder is only meant for classification tasks.
+        # TODO(shikhar): Move classification to cls1 task completely.
     ),
     type_check=AbsDecoder,
     default=None,
@@ -277,6 +285,7 @@ class ASRTask(AbsTask):
                 "xavier_normal",
                 "kaiming_uniform",
                 "kaiming_normal",
+                "normal",
                 None,
             ],
         )

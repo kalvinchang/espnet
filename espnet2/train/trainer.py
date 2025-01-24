@@ -692,6 +692,7 @@ class Trainer:
                         scaler.scale(loss).backward()
                 else:
                     loss.backward()
+            del loss
 
             del loss
 

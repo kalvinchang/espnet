@@ -1,19 +1,28 @@
 # https://github.com/espnet/espnet/blob/master/egs2/owsm_v3.1/s2t1/conf/train_s2t_ebf_conv2d_size1024_e18_d18_piecewise_lr2e-4_warmup60k_flashattn.yaml
 
-# TODO: change to v1 params to downsize
-
 preprocessor: s2t
 preprocessor_conf:
     text_prev_name: text_prev
     text_ctc_name: text_ctc
     fs: 16000
     na_symbol: "<na>"
-    speech_length: 30
+    speech_length: 20
     speech_resolution: 0.02
-    speech_init_silence: 30
-    text_prev_apply_prob: 0.5
-    time_apply_prob: 0.5
+    speech_init_silence: 20
+    text_prev_apply_prob: 0.5 # whether to condition on text_prev
+    # if text_prev is <na>, applying text_prev doesn't do anything
+    #   thus for ASR and phoneme recognition, this doesn't do anything
+    #   but for G2P and P2G, what removing the context does is to
+    #   rely only on the audio
+    # TODO: fully removing the context might be too harsh though?
+    #   may want to try masking
+    time_apply_prob: 1.0
+    # we don't have timestamps
+    #   time_apply_prob is the probability at which timestamps are KEPT
+    #   if the code to remove timestamps is applied, then the timestamp token will be duplicated
     notime_symbol: "<notimestamps>"
+    first_time_symbol: "<0.00>"
+    last_time_symbol: "<20.00>"
 
 frontend_conf:
     n_fft: 512
@@ -43,8 +52,8 @@ encoder_conf:
     attention_layer_type: selfattn
     pos_enc_layer_type: abs_pos
     rel_pos_type: latest
-    attention_qk_norm: false    # qk norm
-    use_flash_attn: true    # flash attn
+    qk_norm: false    # qk norm
+    use_flash_attn: false    # flash attn - Delta only
     cgmlp_linear_units: 4096
     cgmlp_conv_kernel: 31
     use_linear_after_conv: false
@@ -70,10 +79,6 @@ decoder_conf:
     positional_dropout_rate: 0.1
     self_attention_dropout_rate: 0.1
     src_attention_dropout_rate: 0.1
-    self_attention_qk_norm: false   # qk norm
-    src_attention_qk_norm: false    # qk norm
-    self_attention_use_flash_attn: true
-    src_attention_use_flash_attn: true
 
 model_conf:
     ctc_weight: 0.3
