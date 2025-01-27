@@ -19,7 +19,8 @@ encoder_conf:
     additional_special_tokens: 1
     feature_type: phoible
     use_allophone_layer: true
-    phoible_path: "local/allophoible/allophoible_v2.csv"
+    phoneme_inventory_file: data/token_list/word/tokens_mapped.txt
+    phoible_path: local/allophoible/allophoible_v2.csv
     composition_inventories_file: dump/raw/inventories.json
     composition_features:
       - advancedTongueRoot

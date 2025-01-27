@@ -6,8 +6,8 @@ set -u
 set -o pipefail
 
 
-train_set="train"
-valid_set="dev"
+train_set="train_mapped"
+valid_set="dev_mapped"
 test_sets="test_fleurs test_doreco"
 unseen_test_sets="test_doreco"
 
@@ -20,11 +20,12 @@ aux_ctc="advancedTongueRoot anterior approximant back click consonantal constric
 
 ./asr.sh \
     --asr_tag "debug_allo_1" \
+    --wordtoken_list "data/token_list/word/tokens_mapped.txt" \
     --auxiliary_data_tags "${aux_ctc}" \
-    --post_process_local_data_opts "--stage 2 --feature_type=allophoible --unseen_test_sets \"${unseen_test_sets}\"" \
+    --post_process_local_data_opts "--stage 2 --feature_type=allophoible --unseen_test_sets \"${unseen_test_sets}\" --ignore_language_allophones 'bel bos cym kaz mal mar nya ori orm srp tgk urd uzb'" \
     --stage 11 \
     --stop_stage 11 \
-    --ngpu 0 \
+    --ngpu 1 \
     --nj 2 \
     --gpu_inference true \
     --inference_nj 4 \

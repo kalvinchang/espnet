@@ -164,6 +164,7 @@ local_score_opts=          # The options given to local/score.sh.
 asr_speech_fold_length=800 # fold_length for speech data during ASR training.
 asr_text_fold_length=150   # fold_length for text data during ASR training.
 lm_fold_length=150         # fold_length for LM training.
+wordtoken_list=
 
 help_message=$(cat << EOF
 Usage: $0 --train-set "<train_set_name>" --valid-set "<valid_set_name>" --test_sets "<test_set_names>"
@@ -397,7 +398,9 @@ chartoken_list="${token_listdir}"/char/tokens.txt
 hugging_face_token_list="${token_listdir}/hugging_face_"${hugging_face_model_name_or_path/\//-}/tokens.txt
 # NOTE: keep for future development.
 # shellcheck disable=SC2034
-wordtoken_list="${token_listdir}"/word/tokens.txt
+if [ -z "${wordtoken_list}" ]; then
+    wordtoken_list="${token_listdir}"/word/tokens.txt
+fi
 
 if [ "${token_type}" = bpe ]; then
     token_list="${bpetoken_list}"

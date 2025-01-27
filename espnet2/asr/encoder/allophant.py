@@ -239,6 +239,70 @@ def _normalize_phoneme(feature_type: str, phoneme: str) -> str:
         return unicodedata.normalize("NFD", phoneme)
 
 
+def _allophone_mapping_with_fallback(
+    indexer: PhoneticAttributeIndexer,
+    phone_inventory: List[str],
+    phoneme_inventory: List[str],
+    allophone_languages: List[str],
+    composition_inventories: Optional[Dict[str, List[str]]] = None,
+    allophone_identity_placeholders: Optional[List[str]] = None,
+) -> Tuple[LanguageAllophoneMappings, List[str]]:
+    # Separate indices for input phones and output phonemes
+    phone_indices = {phone: index for index, phone in enumerate(phone_inventory)}
+    phoneme_indices = {phoneme: index for index, phoneme in enumerate(phoneme_inventory)}
+    available_phonemes = set(phoneme_indices)
+    # Retrieve allophone data from Allophoible
+    allophone_data = indexer.allophone_data
+    if allophone_data is None:
+        raise ValueError("No allophone data is available in the indexer")
+    allophone_inventories = allophone_data.inventories
+    allophones = {}
+
+    # Retrieve phoneme to allophone indices in the shared phoneme and phone vocabularies respectively
+    for language_id, language in enumerate(allophone_languages):
+        allophone_inventory = (
+            allophone_inventories.loc[allophone_inventories.ISO6393 == language, "Allophones"]
+            .str.split(" ")
+            .to_dict()
+        )
+        allophones[language_id] = {
+            phoneme_indices[phoneme]: [phone_indices[allophone] for allophone in allophones]
+            for phoneme, allophones in allophone_inventory.items()
+            # TODO: More accurate to use mapping file for this to filter for each language independently
+            # Filter phonemes that don't exist in the training data
+            if phoneme in available_phonemes
+        }
+
+    # Retrieve phoneme to phoneme identity indices in the shared phoneme and phone vocabularies respectively
+    if allophone_identity_placeholders:
+        if composition_inventories is None:
+            raise ValueError(
+                "composition_inventories is undefined but required for constructing identity mappings"
+                " for languages in allophone_identity_placeholders."
+            )
+
+        for language_id, language in enumerate(allophone_identity_placeholders, len(allophone_languages)):
+            # Extend phone inventory with any phones that don't occur in the languages with allophone data
+            for phoneme in composition_inventories[language]:
+                if phoneme not in phone_indices:
+                    phone_indices[phoneme] = len(phone_indices)
+
+            allophones[language_id] = {
+                phoneme_indices[phoneme]: [phone_indices[phoneme]]
+                for phoneme in composition_inventories[language]
+            }
+
+        all_languages = allophone_languages + allophone_identity_placeholders
+    else:
+        all_languages = allophone_languages
+
+    return LanguageAllophoneMappings(
+        allophones,
+        all_languages,
+        phone_inventory,
+    ), list(phone_indices)
+
+
 class AllophantLayers(AbsEncoder):
     @typechecked
     def __init__(
@@ -246,6 +310,7 @@ class AllophantLayers(AbsEncoder):
         input_size: int,
         phoneme_embedding_size: int,
         composition_features: List[str],
+        phoneme_inventory_file: str,
         allophone_languages: Optional[List[str]] = None,
         allophone_identity_placeholders: Optional[List[str]] = None,
         language_id_mapping_path: Optional[str] = None,
@@ -255,22 +320,18 @@ class AllophantLayers(AbsEncoder):
         use_allophone_layer: bool = True,
         utt_id_separator: str = "_",
         feature_type: str = "phoible",
-        phoneme_inventory_file: Optional[str] = None,
         composition_inventories_file: Optional[str] = None,
     ):
         super().__init__()
 
         # Assumes the phoneme inventory is in the form generated from stage 5
-        if phoneme_inventory_file is not None:
-            with open(phoneme_inventory_file, "r", encoding="utf-8") as file:
-                # Normalize vocabulary for feature compatibility and filter special tokens
-                phoneme_inventory = [
-                    _normalize_phoneme(feature_type, line) for line in map(str.strip, file)
-                    # Ignore special tokens
-                    if not (line.startswith("<") and line.endswith(">"))
-                ]
-        else:
-            phoneme_inventory = None
+        with open(phoneme_inventory_file, "r", encoding="utf-8") as file:
+            # Normalize vocabulary for feature compatibility and filter special tokens
+            phoneme_inventory = [
+                _normalize_phoneme(feature_type, line) for line in map(str.strip, file)
+                # Ignore special tokens
+                if not (line.startswith("<") and line.endswith(">"))
+            ]
 
         # Used by ESPnetAsrModel to identify encoders that take `utt_id` as an input
         # Required if `use_allophone_layer` is `True`
@@ -336,18 +397,18 @@ class AllophantLayers(AbsEncoder):
                     " for initializing allophone matrices"
                 )
 
-            if phoneme_inventory_file is not None:
-                raise ValueError("Using a custom phoneme inventory together with the allophone layer is unsupported")
-
-            if phoneme_inventory is None:
-                phoneme_inventory = self._indexer.allophone_data.shared_phone_indexer.phonemes.tolist()
-            language_allophones = LanguageAllophoneMappings.from_allophone_data(
+            original_phoneme_inventory = phoneme_inventory
+            phoneme_inventory = self._indexer.allophone_data.shared_phone_indexer.phonemes.tolist()
+            language_allophones, phoneme_inventory = _allophone_mapping_with_fallback(
                 self._indexer,
+                phoneme_inventory,
+                original_phoneme_inventory,
                 allophone_languages,
+                self._composition_inventories,
+                allophone_identity_placeholders
             )
         else:
-            if phoneme_inventory is None:
-                phoneme_inventory = self._indexer.phonemes.tolist()
+            phoneme_inventory = self._indexer.phonemes.tolist()
             # Use the phoneme subset from the attribute indexer with all features for constructing the embeddings
             language_allophones = None
 
@@ -370,14 +431,9 @@ class AllophantLayers(AbsEncoder):
         if language_allophones is None:
             self._output_size = self._phoneme_composition_layer.output_size()
             self._allophone_layer = None
-            self._language_ids = {}
         elif reverse_map is None:
             raise ValueError("language_id_mapping_path must be specified when the allophone layer is enabled")
         else:
-            self._language_ids = {
-                reverse_map[language]: i
-                for i, language in enumerate(language_allophones.languages)
-            }
             self._output_size = self._indexer.phonemes.size + blank_offset
             self._allophone_layer = AllophoneMapping(
                 self._phoneme_composition_layer.output_size(),
@@ -458,13 +514,17 @@ class AllophantLayers(AbsEncoder):
         # Only use the allophone layer for training
         if self._allophone_layer is not None and self.training:
             language_ids = torch.tensor(
-                [self._language_ids[i] for i in self._utterance_langcodes(utt_id)],
+                [self._allophone_layer.index_map[i] for i in self._utterance_langcodes(utt_id)],
                 dtype=torch.int64,
             )
             # Assume that the allophone layer should not be used when a custom phoneme inventory is provided
             output = self._allophone_layer(
                 output, language_ids, target_feature_indices is not None
             )
+
+            # TODO: Might cause issues with mixed precision training
+            # Apply l2 penalty while training
+            self._allophone_layer.l2_penalty().backward(retain_graph=True)
 
         # Return frontend output as an intermediate output for auxiliary CTC
         return (output, [(0, xs_pad), (1, output)]), ilens, None

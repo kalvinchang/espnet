@@ -9,6 +9,7 @@ import json
 from tqdm import tqdm
 import re
 import unicodedata
+import itertools
 
 from phonepiece.ipa import read_ipa
 from allophant.phonemes import IpaSegmenter
@@ -248,6 +249,63 @@ def extract_vocabulary(
     return inventories, training_languages
 
 
+_data_files = {"feats_type", "spk2utt", "utt2spk", "utt2num_samples", "wav.scp"}
+
+
+def _create_mapped_directory(dump_dir: Path, original_split: str) -> Path:
+    original_path = dump_dir / original_split
+    new_path = dump_dir / (original_split + "_mapped")
+    new_path.mkdir(exist_ok=True)
+
+    # Symlink to the original data except for text
+    for file in original_path.iterdir():
+        link_path = new_path / file.name
+        if file.name in _data_files and not link_path.exists():
+            link_path.symlink_to(file.absolute())
+
+    return new_path
+
+
+def _remap_phonemes(
+    original_text_path: Path,
+    dump_dir: Path,
+    split: str,
+    glottomap: Dict[str, Dict[str, str]],
+    phoneme_mappings: Dict[str, Dict[str, List[str]]]
+):
+    last_language = ""
+    language = ""
+    mapping = {}
+
+    train_remapped_path = _create_mapped_directory(dump_dir, split) / "text"
+    print(f"Remapping {original_text_path} to {train_remapped_path}...")
+
+    with original_text_path.open("r", encoding="utf-8") as file, train_remapped_path.open("w", encoding="utf-8") as out_file:
+        for line in tqdm(file):
+            utt_id, *transcription = (
+                line.strip().replace(_TIE, "").replace(_LOWER_TIE, "").split(" ")
+            )
+            # Workaround for inconsistent DORECO subset naming
+            _, language_code, dataset, _ = re.split(
+                r"_", utt_id, 3
+            )
+
+            if language_code != last_language:
+                last_language = language_code
+                language = get_iso6393(language_code, dataset, glottomap["code"], glottomap["closest"])
+                mapping = {} if language is None else phoneme_mappings[language]
+
+            remapped = [
+                remapped
+                for phoneme in transcription
+                # TODO: Improve to avoid double normalization
+                for remapped in mapping.get(_normalize_phoneme(phoneme), _normalize_phoneme(phoneme))
+            ]
+
+            out_file.write(f"{utt_id} {' '.join(remapped)}\n")
+            # print(len(transcription), len(remapped), transcription, remapped)
+
+
 def collect_and_map_inventories(
     dump_dir: Path,
     data_dir: Path,
@@ -363,7 +421,8 @@ def collect_and_map_inventories(
             tqdm.write(
                 f"WARNING: No allophone inventory found for {language}, skipping..."
             )
-            phoneme_mappings[language] = {}
+            # Assign identity mappings as a fallback
+            phoneme_mappings[language] = {phoneme: [phoneme] for phoneme in inventory_lists[language]}
             continue
 
         # Remap the inventory to PHOIBLE
@@ -384,10 +443,8 @@ def collect_and_map_inventories(
         with mapping_details_path.open("w", encoding="utf-8") as file:
             json.dump(mapping_details, file, ensure_ascii=False)
 
-    # TODO: Remap full training data with inventory mappings
-    return
-
-    with token_path.open("w", encoding="utf-8") as file:
+    mapped_tokens_path = words_dir / "tokens_mapped.txt"
+    with mapped_tokens_path.open("w", encoding="utf-8") as file:
         shared_mapped_inventory = {
             phoneme
             for target_phonemes in phoneme_mappings.values()
@@ -402,7 +459,7 @@ def collect_and_map_inventories(
             )
         )
 
-    print(f"Wrote new shared inventory to {token_path}")
+    print(f"Wrote new shared inventory to {mapped_tokens_path}")
 
     # Backup original transcriptions
     train_backup_path = dump_dir / split / "text.original"
@@ -414,34 +471,21 @@ def collect_and_map_inventories(
     if not dev_backup_path.exists():
         shutil.copy2(dev_text_path, dev_backup_path)
 
-    last_language = ""
-    language = ""
-    mapping = {}
+    _remap_phonemes(
+        train_text_path,
+        dump_dir,
+        split,
+        glottomap,
+        phoneme_mappings
+    )
 
-    print(f"Remapping {train_text_path}...")
-
-    with (train_text_path).open("r", encoding="utf-8") as file:
-        for line in tqdm(file):
-            utt_id, *transcription = (
-                line.strip().replace(_TIE, "").replace(_LOWER_TIE, "").split(" ")
-            )
-            # Workaround for inconsistent DORECO subset naming
-            _, language_code, dataset, _ = re.split(
-                r"_", utt_id, 3
-            )
-
-            if language_code != last_language:
-                last_language = language_code
-                language = get_iso6393(language_code, dataset, glottomap["code"], glottomap["closest"])
-                mapping = {} if language is None else phoneme_mappings[language]
-
-            remapped = [
-                remapped
-                for phoneme in transcription
-                # TODO: Improve to avoid double normalization
-                for remapped in mapping.get(_normalize_phoneme(phoneme), _normalize_phoneme(phoneme))
-            ]
-            print(len(transcription), len(remapped), transcription, remapped)
+    _remap_phonemes(
+        dev_text_path,
+        dump_dir,
+        "dev",
+        glottomap,
+        phoneme_mappings
+    )
 
 
 def main(args: Sequence[str]) -> None:

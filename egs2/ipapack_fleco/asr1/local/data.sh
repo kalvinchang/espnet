@@ -15,6 +15,7 @@ SECONDS=0
 train_data_dir=
 valid_data_dir=
 unseen_test_sets=
+ignore_language_allophones=
 feature_type=panphon
 
 
@@ -60,10 +61,16 @@ fi
 
 if [ ${stage} -eq 2 ] && [ ${stop_stage} -ge 2 ]; then
     log "data prep stage 2: Additional data processing - This should only be called after ASR stage 4"
-    # create file of articulatory features for auxiliary CTC
-    python local/create_artic_feats.py --feature_type "${feature_type}" --data_dir "${train_data_dir}" --write_vocabulary
-    python local/create_artic_feats.py --feature_type "${feature_type}" --data_dir "${valid_data_dir}"
-    python local/map_to_phoible.py --skip_mapping --unseen_test_sets "${unseen_test_sets}"
+    # Create files of articulatory features for auxiliary CTC, phoneme inventories and phoneme mappings if the feature_type is set to PHOIBLE
+    if [ "${feature_type}" = "panphon" ]; then
+        python local/create_artic_feats.py --feature_type "${feature_type}" --data_dir "${train_data_dir}" --write_vocabulary
+        python local/create_artic_feats.py --feature_type "${feature_type}" --data_dir "${valid_data_dir}"
+        python local/map_to_phoible.py --skip_mapping --unseen_test_sets "${unseen_test_sets}" --phonepiece_pretokenized
+    else
+        python local/map_to_phoible.py --unseen_test_sets "${unseen_test_sets}" --phonepiece_pretokenized --ignore_language_allophones "${ignore_language_allophones}"
+        python local/create_artic_feats.py --feature_type "${feature_type}" --data_dir "${train_data_dir}_mapped" --write_vocabulary
+        python local/create_artic_feats.py --feature_type "${feature_type}" --data_dir "${valid_data_dir}_mapped"
+    fi
 fi
 
 log "Successfully finished. [elapsed=${SECONDS}s]"
