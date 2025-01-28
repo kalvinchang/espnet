@@ -93,10 +93,11 @@ scheduler_conf:
     warmup_lr_list: [0., 5.0e-05, 0.0005]
 
 batch_type: unsorted
-batch_size: 256
-accum_grad: 1
+# global batch size is 256
+batch_size: 16
+accum_grad: 16
 batch_bins: 1000000
-num_iters_per_epoch: 15000
+num_iters_per_epoch: 10000
 max_epoch: 45
 patience: none
 init: none
