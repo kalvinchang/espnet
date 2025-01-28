@@ -31,7 +31,7 @@ nodelist=$(echo $nodelist | tr ' ' ',')
     --nj 64 \
     --gpu_inference true \
     --inference_nj 64 \
-    --num_splits_s2t 12 \
+    --num_splits_s2t 1 \
     --max_wav_duration 20 \
     --feats_type raw \
     --audio_format flac.ark \
