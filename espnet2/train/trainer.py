@@ -694,8 +694,6 @@ class Trainer:
                     loss.backward()
             del loss
 
-            del loss
-
             if iiter % accum_grad == 0:
                 if scaler is not None:
                     # Unscales the gradients of optimizer's assigned params in-place
