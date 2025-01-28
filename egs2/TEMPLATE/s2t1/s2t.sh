@@ -35,6 +35,7 @@ skip_upload_hf=true     # Skip uploading to huggingface stage.
 eval_valid_set=false    # Run decoding for the validation set
 ngpu=1                  # The number of gpus ("0" uses cpu, otherwise use gpu).
 num_nodes=1             # The number of nodes.
+host=                   # The hosts used
 nj=32                   # The number of parallel jobs.
 inference_nj=32         # The number of parallel jobs in decoding.
 gpu_inference=false     # Whether to perform gpu decoding.
@@ -1399,7 +1400,7 @@ if [ ${stage} -le 11 ] && [ ${stop_stage} -ge 11 ] && ! [[ " ${skip_stages} " =~
         --cmd "${cuda_cmd} --name ${jobname}" \
         --log "${s2t_exp}"/train.log \
         --ngpu "${ngpu}" \
-        --num_nodes "${num_nodes}" \
+        --host "${host}" \
         --init_file_prefix "${s2t_exp}"/.dist_init_ \
         --multiprocessing_distributed true -- \
         ${python} -m espnet2.bin.s2t_train \

@@ -19,11 +19,14 @@ inference_config=conf/decode_s2t.yaml
 # TODO: remove stop_stage
 # TODO: num_nodes
 
+nodelist=$(scontrol show hostnames $SLURM_JOB_NODELIST)
+nodelist=$(echo $nodelist | tr ' ' ',')
+
 ./s2t.sh \
     --stage 11 \
     --stop_stage 11 \
     --use_lm false \
-    --num_nodes 16 \
+    --host "$nodelist" \
     --ngpu 4 \
     --nj 64 \
     --gpu_inference true \
