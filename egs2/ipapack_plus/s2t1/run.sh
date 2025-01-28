@@ -10,8 +10,10 @@ valid_set=dev
 test_sets=dev
 
 nbpe=50000
-s2t_config=conf/tuning/train_s2t_ebf_conv2d_size1024_e18_d18_piecewise_lr2e-4_warmup60k_flashattn.yaml
-inference_config=conf/decode_s2t.yaml
+# TODO: switch back to the full model s2t_config=conf/tuning/train_s2t_ebf_conv2d_size1024_e18_d18_piecewise_lr2e-4_warmup60k_flashattn.yaml
+s2t_config=conf/tuning/train_s2t_transformer_size768_e12_d12_lr1e-4_piecewise_lr.yaml
+# TODO: need task-specific decoding
+inference_config=conf/decode_s2t_pr.yaml
 
 
 # adapted from https://github.com/espnet/espnet/blob/master/egs2/owsm_v3.1/s2t1/run.sh
