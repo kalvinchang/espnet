@@ -26,23 +26,28 @@ def soundfile_read(
     prev_rate = None
     prev_wav = None
     for wav in wavs:
-        with soundfile.SoundFile(wav) as f:
-            f.seek(start)
-            if end is not None:
-                frames = end - start
-            else:
-                frames = -1
-            if dtype == "float16":
-                array = f.read(
-                    frames,
-                    dtype="float32",
-                    always_2d=always_2d,
-                ).astype(dtype)
-            else:
-                array = f.read(frames, dtype=dtype, always_2d=always_2d)
-            rate = f.samplerate
-            subtype = f.subtype
-            subtypes.append(subtype)
+        try:
+            f = soundfile.SoundFile(wav)
+        except:
+            time.sleep(5)
+            f = soundfile.SoundFile(wav)
+
+        f.seek(start)
+        if end is not None:
+            frames = end - start
+        else:
+            frames = -1
+        if dtype == "float16":
+            array = f.read(
+                frames,
+                dtype="float32",
+                always_2d=always_2d,
+            ).astype(dtype)
+        else:
+            array = f.read(frames, dtype=dtype, always_2d=always_2d)
+        rate = f.samplerate
+        subtype = f.subtype
+        subtypes.append(subtype)
 
         if len(wavs) > 1 and array.ndim == 1 and concat_axis == 1:
             # array: (Time, Channel)
