@@ -26,7 +26,6 @@ from espnet.nets.pytorch_backend.transformer.attention import (  # noqa: H301
     RelPositionMultiHeadedAttention,
 )
 from espnet.nets.pytorch_backend.transformer.embedding import (  # noqa: H301
-    ConvolutionalPositionalEmbedding,
     LegacyRelPositionalEncoding,
     PositionalEncoding,
     RelPositionalEncoding,
@@ -73,7 +72,6 @@ class EBranchformerEncoderLayer(torch.nn.Module):
         feed_forward_macaron: Optional[torch.nn.Module],
         dropout_rate: float,
         merge_conv_kernel: int = 3,
-        activation_ckpt: bool = False,
     ):
         super().__init__()
 
@@ -106,7 +104,6 @@ class EBranchformerEncoderLayer(torch.nn.Module):
             bias=True,
         )
         self.merge_proj = torch.nn.Linear(size + size, size)
-        self.activation_ckpt = activation_ckpt
 
     def forward(self, x_input, mask, cache=None):
         """Compute encoded features.
@@ -132,26 +129,15 @@ class EBranchformerEncoderLayer(torch.nn.Module):
 
         if self.feed_forward_macaron is not None:
             residual = x
-            if self.activation_ckpt:
-                x = torch.utils.checkpoint.checkpoint(
-                    self.norm_ff_macaron, x, use_reentrant=False
-                )
-            else:
-                x = self.norm_ff_macaron(x)
+            x = self.norm_ff_macaron(x)
             x = residual + self.ff_scale * self.dropout(self.feed_forward_macaron(x))
-            del residual
 
         # Two branches
         x1 = x
         x2 = x
 
         # Branch 1: multi-headed attention module
-        if self.activation_ckpt:
-            x1 = torch.utils.checkpoint.checkpoint(
-                self.norm_mha, x1, use_reentrant=False
-            )
-        else:
-            x1 = self.norm_mha(x1)
+        x1 = self.norm_mha(x1)
 
         if isinstance(self.attn, FastSelfAttention):
             x_att = self.attn(x1, mask)
@@ -162,15 +148,9 @@ class EBranchformerEncoderLayer(torch.nn.Module):
                 x_att = self.attn(x1, x1, x1, mask)
 
         x1 = self.dropout(x_att)
-        del x_att
 
         # Branch 2: convolutional gating mlp
-        if self.activation_ckpt:
-            x2 = torch.utils.checkpoint.checkpoint(
-                self.norm_mlp, x2, use_reentrant=False
-            )
-        else:
-            x2 = self.norm_mlp(x2)
+        x2 = self.norm_mlp(x2)
 
         if pos_emb is not None:
             x2 = (x2, pos_emb)
@@ -182,32 +162,18 @@ class EBranchformerEncoderLayer(torch.nn.Module):
 
         # Merge two branches
         x_concat = torch.cat([x1, x2], dim=-1)
-        del x1, x2
-
         x_tmp = x_concat.transpose(1, 2)
         x_tmp = self.depthwise_conv_fusion(x_tmp)
         x_tmp = x_tmp.transpose(1, 2)
         x = x + self.dropout(self.merge_proj(x_concat + x_tmp))
-        del x_tmp, x_concat
 
         if self.feed_forward is not None:
             # feed forward module
             residual = x
-            if self.activation_ckpt:
-                x = torch.utils.checkpoint.checkpoint(
-                    self.norm_ff, x, use_reentrant=False
-                )
-            else:
-                x = self.norm_ff(x)
+            x = self.norm_ff(x)
             x = residual + self.ff_scale * self.dropout(self.feed_forward(x))
-            del residual
 
-        if self.activation_ckpt:
-            x = torch.utils.checkpoint.checkpoint(
-                self.norm_final, x, use_reentrant=False
-            )
-        else:
-            x = self.norm_final(x)
+        x = self.norm_final(x)
 
         if pos_emb is not None:
             return (x, pos_emb), mask
@@ -249,8 +215,7 @@ class EBranchformerEncoder(AbsEncoder):
         interctc_layer_idx=None,
         interctc_use_conditioning: bool = False,
         qk_norm: bool = False,
-        use_flash_attn: bool = False,
-        activation_ckpt=False,
+        use_flash_attn: bool = True,
     ):
         super().__init__()
         self._output_size = output_size
@@ -266,9 +231,7 @@ class EBranchformerEncoder(AbsEncoder):
         else:
             raise ValueError("unknown rel_pos_type: " + rel_pos_type)
 
-        if pos_enc_layer_type == "conv":
-            pos_enc_class = ConvolutionalPositionalEmbedding
-        elif pos_enc_layer_type == "abs_pos":
+        if pos_enc_layer_type == "abs_pos":
             pos_enc_class = PositionalEncoding
         elif pos_enc_layer_type == "scaled_abs_pos":
             pos_enc_class = ScaledPositionalEncoding
@@ -290,11 +253,6 @@ class EBranchformerEncoder(AbsEncoder):
                 torch.nn.LayerNorm(output_size),
                 torch.nn.Dropout(dropout_rate),
                 pos_enc_class(output_size, positional_dropout_rate, max_pos_emb_len),
-            )
-        elif input_layer == "wav2vec":
-            self.embed = torch.nn.Sequential(
-                pos_enc_class(output_size, positional_dropout_rate, max_pos_emb_len),
-                torch.nn.Dropout(dropout_rate),
             )
         elif input_layer == "conv1d1":
             self.embed = Conv1dSubsampling1(
@@ -362,7 +320,7 @@ class EBranchformerEncoder(AbsEncoder):
                 input_layer,
                 pos_enc_class(output_size, positional_dropout_rate, max_pos_emb_len),
             )
-        elif input_layer is None or input_layer == "none":
+        elif input_layer is None:
             if input_size == output_size:
                 self.embed = torch.nn.Sequential(
                     pos_enc_class(output_size, positional_dropout_rate, max_pos_emb_len)
@@ -380,7 +338,6 @@ class EBranchformerEncoder(AbsEncoder):
                 linear_units,
                 dropout_rate,
                 activation,
-                activation_ckpt,
             )
         elif positionwise_layer_type is None:
             logging.warning("no macaron ffn")
@@ -449,7 +406,6 @@ class EBranchformerEncoder(AbsEncoder):
             dropout_rate,
             use_linear_after_conv,
             gate_activation,
-            activation_ckpt,
         )
 
         self.encoders = repeat(
@@ -466,7 +422,6 @@ class EBranchformerEncoder(AbsEncoder):
                 ),
                 dropout_rate,
                 merge_conv_kernel,
-                activation_ckpt,
             ),
             layer_drop_rate,
         )
@@ -488,9 +443,8 @@ class EBranchformerEncoder(AbsEncoder):
         xs_pad: torch.Tensor,
         ilens: torch.Tensor,
         prev_states: torch.Tensor = None,
-        masks: torch.Tensor = None,
         ctc: CTC = None,
-        return_all_hs: bool = False,
+        max_layer: int = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
         """Calculate forward propagation.
 
@@ -506,10 +460,7 @@ class EBranchformerEncoder(AbsEncoder):
             torch.Tensor: Not to be used now.
         """
 
-        if masks is None:
-            masks = (~make_pad_mask(ilens)[:, None, :]).to(xs_pad.device)
-        else:
-            masks = ~masks[:, None, :]
+        masks = (~make_pad_mask(ilens)[:, None, :]).to(xs_pad.device)
 
         if (
             isinstance(self.embed, Conv2dSubsampling)
@@ -535,13 +486,11 @@ class EBranchformerEncoder(AbsEncoder):
 
         intermediate_outs = []
         if len(self.interctc_layer_idx) == 0:
-            for layer_idx, encoder_layer in enumerate(self.encoders):
-                xs_pad, masks = encoder_layer(xs_pad, masks)
-                if return_all_hs:
-                    if isinstance(xs_pad, tuple):
-                        intermediate_outs.append(xs_pad[0])
-                    else:
-                        intermediate_outs.append(xs_pad)
+            if max_layer is not None and 0 <= max_layer < len(self.encoders):
+                for layer_idx, encoder_layer in enumerate(self.encoders):
+                    xs_pad, masks = encoder_layer(xs_pad, masks)
+                    if layer_idx >= max_layer:
+                        break
             else:
                 xs_pad, masks = self.encoders(xs_pad, masks)
         else:

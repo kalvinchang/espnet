@@ -137,17 +137,13 @@ class MultiHeadedAttention(nn.Module):
             mask = mask.unsqueeze(1).eq(0)  # (batch, 1, *, time2)
             min_value = torch.finfo(scores.dtype).min
             scores = scores.masked_fill(mask, min_value)
-            attn = torch.softmax(scores, dim=-1).masked_fill(
+            self.attn = torch.softmax(scores, dim=-1).masked_fill(
                 mask, 0.0
             )  # (batch, head, time1, time2)
         else:
-            attn = torch.softmax(scores, dim=-1)  # (batch, head, time1, time2)
+            self.attn = torch.softmax(scores, dim=-1)  # (batch, head, time1, time2)
 
-        # This wastes a lot of GPU memory
-        # TO DO: add a flag to check if this should be saved
-        self.attn = attn
-
-        p_attn = self.dropout(attn)
+        p_attn = self.dropout(self.attn)
         x = torch.matmul(p_attn, value)  # (batch, head, time1, d_k)
         x = (
             x.transpose(1, 2).contiguous().view(n_batch, -1, self.h * self.d_k)

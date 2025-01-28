@@ -117,7 +117,6 @@ def test_enh_asr_model(
         specaug=None,
         normalize=None,
         preencoder=None,
-        masker=None,
         postencoder=None,
         joint_network=None,
     )
@@ -181,7 +180,6 @@ def test_enh_asr_model_2spk(training, calc_enh_loss):
         specaug=None,
         normalize=None,
         preencoder=None,
-        masker=None,
         postencoder=None,
         joint_network=None,
     )

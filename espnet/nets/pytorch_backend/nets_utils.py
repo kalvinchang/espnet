@@ -61,7 +61,7 @@ def pad_list(xs, pad_value):
     return pad
 
 
-def make_pad_mask(lengths, xs=None, length_dim=-1, maxlen=None, device=None):
+def make_pad_mask(lengths, xs=None, length_dim=-1, maxlen=None):
     """Make mask tensor containing indices of padded part.
 
     Args:
@@ -70,7 +70,6 @@ def make_pad_mask(lengths, xs=None, length_dim=-1, maxlen=None, device=None):
             If set, masks will be the same shape as this tensor.
         length_dim (int, optional): Dimension indicator of the above tensor.
             See the example.
-        device (str, optional): device of the mask. Overrides xs.device.
 
     Returns:
         Tensor: Mask tensor containing indices of padded part.
@@ -166,12 +165,12 @@ def make_pad_mask(lengths, xs=None, length_dim=-1, maxlen=None, device=None):
         and length_dim <= 2
         and (not isinstance(lengths, list) and lengths.dim() == 1)
     ):
-        return _make_pad_mask_traceable(lengths, xs, length_dim, maxlen, device=device)
+        return _make_pad_mask_traceable(lengths, xs, length_dim, maxlen)
     else:
-        return _make_pad_mask(lengths, xs, length_dim, maxlen, device=device)
+        return _make_pad_mask(lengths, xs, length_dim, maxlen)
 
 
-def _make_pad_mask(lengths, xs=None, length_dim=-1, maxlen=None, device=None):
+def _make_pad_mask(lengths, xs=None, length_dim=-1, maxlen=None):
     if not isinstance(lengths, list):
         lengths = lengths.long().tolist()
 
@@ -187,17 +186,10 @@ def _make_pad_mask(lengths, xs=None, length_dim=-1, maxlen=None, device=None):
             max(lengths)
         ), f"maxlen {maxlen} must be >= max(lengths) {max(lengths)}"
 
-    if device:
-        seq_range = torch.arange(0, maxlen, dtype=torch.int64, device=device)
-        seq_range_expand = seq_range.unsqueeze(0).expand(bs, maxlen)
-        seq_length_expand = seq_range_expand.new(lengths).unsqueeze(-1)
-        mask = seq_range_expand >= seq_length_expand
-        del seq_range, seq_range_expand, seq_length_expand
-    else:
-        seq_range = torch.arange(0, maxlen, dtype=torch.int64)
-        seq_range_expand = seq_range.unsqueeze(0).expand(bs, maxlen)
-        seq_length_expand = seq_range_expand.new(lengths).unsqueeze(-1)
-        mask = seq_range_expand >= seq_length_expand
+    seq_range = torch.arange(0, maxlen, dtype=torch.int64)
+    seq_range_expand = seq_range.unsqueeze(0).expand(bs, maxlen)
+    seq_length_expand = seq_range_expand.new(lengths).unsqueeze(-1)
+    mask = seq_range_expand >= seq_length_expand
 
     if xs is not None:
         assert (
@@ -210,13 +202,11 @@ def _make_pad_mask(lengths, xs=None, length_dim=-1, maxlen=None, device=None):
         ind = tuple(
             slice(None) if i in (0, length_dim) else None for i in range(xs.dim())
         )
-        mask = mask[ind].expand_as(xs)
-        if device is None:
-            mask = mask.to(xs.device)
+        mask = mask[ind].expand_as(xs).to(xs.device)
     return mask
 
 
-def _make_pad_mask_traceable(lengths, xs, length_dim, maxlen=None, device=None):
+def _make_pad_mask_traceable(lengths, xs, length_dim, maxlen=None):
     """
     Make mask tensor containing indices of padded part.
     This is a simplified implementation of make_pad_mask without the xs input
@@ -226,9 +216,9 @@ def _make_pad_mask_traceable(lengths, xs, length_dim, maxlen=None, device=None):
     select rows to create mask tensor.
     """
 
-    if xs is None and device is None:
+    if xs is None:
         device = lengths.device
-    elif device is None:
+    else:
         device = xs.device
 
     if xs is not None and len(xs.shape) == 3:

@@ -37,7 +37,6 @@ class DefaultFrontend(AbsFrontend):
         htk: bool = False,
         frontend_conf: Optional[dict] = get_default_kwargs(Frontend),
         apply_stft: bool = True,
-        rounding: str = "trunc",
     ):
         super().__init__()
         if isinstance(fs, str):
@@ -56,7 +55,6 @@ class DefaultFrontend(AbsFrontend):
                 window=window,
                 normalized=normalized,
                 onesided=onesided,
-                rounding=rounding,
             )
         else:
             self.stft = None
