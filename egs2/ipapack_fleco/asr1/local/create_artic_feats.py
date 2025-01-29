@@ -72,7 +72,11 @@ if __name__ == "__main__":
                         utt_featlist[feature].append(value)
                 else:
                     # Get Phoible feature contours for each phoneme
-                    fts = ft.feature_vector(phoneme)
+                    try:
+                        fts = ft.feature_vector(phoneme)
+                    except KeyError:
+                        oov_phonemes.add(phoneme)
+                        continue
                     for feature, values in zip(artic_feats, fts):
                         utt_featlist[feature].extend(ft.feature_values(feature, values))
 

@@ -297,9 +297,8 @@ def _remap_phonemes(
 
             remapped = [
                 remapped
-                for phoneme in transcription
-                # TODO: Improve to avoid double normalization
-                for remapped in mapping.get(_normalize_phoneme(phoneme), _normalize_phoneme(phoneme))
+                for phoneme in map(_normalize_phoneme, transcription)
+                for remapped in mapping.get(phoneme, (phoneme,))
             ]
 
             out_file.write(f"{utt_id} {' '.join(remapped)}\n")
@@ -429,6 +428,7 @@ def collect_and_map_inventories(
         mapping = phoneme_indexer.map_language_inventory(
             [inventory_lists[language]], language
         )[0]
+
         phoneme_mappings[language] = mapping
         mapping_details[language] = {
             "mapping": mapping,
