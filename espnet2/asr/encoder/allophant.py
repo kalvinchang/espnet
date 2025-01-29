@@ -397,24 +397,23 @@ class AllophantLayers(AbsEncoder):
                     " for initializing allophone matrices"
                 )
 
-            original_phoneme_inventory = phoneme_inventory
-            phoneme_inventory = self._indexer.allophone_data.shared_phone_indexer.phonemes.tolist()
-            language_allophones, phoneme_inventory = _allophone_mapping_with_fallback(
+            phone_inventory = self._indexer.allophone_data.shared_phone_indexer.phonemes.tolist()
+            language_allophones, composition_inventory = _allophone_mapping_with_fallback(
                 self._indexer,
+                phone_inventory,
                 phoneme_inventory,
-                original_phoneme_inventory,
                 allophone_languages,
                 self._composition_inventories,
                 allophone_identity_placeholders
             )
         else:
-            phoneme_inventory = self._indexer.phonemes.tolist()
+            composition_inventory = phoneme_inventory
             # Use the phoneme subset from the attribute indexer with all features for constructing the embeddings
             language_allophones = None
 
         # Use either the phone or the phoneme subset from the attribute indexer with all features for constructing the embeddings
         training_features = self._indexer.full_attributes.subset(
-            phoneme_inventory,
+            composition_inventory,
             self._indexer.composition_features.copy(),
         ).dense_feature_table.long()
 
@@ -434,7 +433,7 @@ class AllophantLayers(AbsEncoder):
         elif reverse_map is None:
             raise ValueError("language_id_mapping_path must be specified when the allophone layer is enabled")
         else:
-            self._output_size = self._indexer.phonemes.size + blank_offset
+            self._output_size = len(phoneme_inventory) + blank_offset + additional_special_tokens
             self._allophone_layer = AllophoneMapping(
                 self._phoneme_composition_layer.output_size(),
                 self._output_size,
