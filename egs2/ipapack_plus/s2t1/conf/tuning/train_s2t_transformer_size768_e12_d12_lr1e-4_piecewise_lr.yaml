@@ -94,8 +94,8 @@ scheduler_conf:
 
 batch_type: unsorted
 # global batch size is 256
-batch_size: 16
-accum_grad: 16
+batch_size: 256
+accum_grad: 1
 batch_bins: 1000000
 num_iters_per_epoch: 10000
 max_epoch: 45
