@@ -148,7 +148,7 @@ model_conf:
     interctc_weight: 0.5
     lsm_weight: 0.1
     length_normalized_loss: false
-    aux_ctc_share_vocab: "dump/raw/train/feature_values.json"
+    aux_ctc_share_vocab: "dump/raw/train_mapped/feature_values.json"
     aux_ctc:
       '0':
         - advancedTongueRoot
@@ -192,19 +192,21 @@ aux_ctc_tasks: ["advancedTongueRoot" , "anterior" , "approximant" , "back" , "cl
 
 log_interval: 1
 num_att_plot: 0
-# TODO: Increase to 32 again for running on the cluster
-num_workers: 4
+num_workers: 32
 sort_in_batch: descending
 sort_batch: descending
 batch_type: numel
 batch_bins: 20000000
 accum_grad: 4
-max_epoch: 10
+max_epoch: 45
 patience: none
 init: xavier_uniform
 best_model_criterion:
 -   - valid
     - acc
+    - max
+-   - valid
+    - total_count
     - max
 keep_nbest_models: 10
 

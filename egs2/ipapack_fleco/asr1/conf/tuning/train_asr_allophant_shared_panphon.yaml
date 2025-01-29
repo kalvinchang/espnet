@@ -43,7 +43,7 @@ encoder_conf:
       - round
       - velaric
       - tense
-      - long
+      # - long
     language_id_mapping_path: dump/raw/supported_languages.json
     utt_id_separator: "_"
 
@@ -89,14 +89,19 @@ sort_batch: descending
 batch_type: numel
 batch_bins: 20000000
 accum_grad: 4
-max_epoch: 10
+max_epoch: 45
 patience: none
 init: xavier_uniform
 best_model_criterion:
 -   - valid
     - acc
     - max
+-   - valid
+    - total_count
+    - max
 keep_nbest_models: 10
+unused_parameters: true
+log_level: INFO
 
 use_amp: false
 cudnn_deterministic: false

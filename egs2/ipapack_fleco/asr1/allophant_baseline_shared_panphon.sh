@@ -14,7 +14,7 @@ unseen_test_sets="test_doreco"
 encoder=allophant
 asr_config=conf/tuning/train_asr_${encoder}_shared_panphon.yaml
 inference_config=conf/decode_allophant.yaml
-aux_ctc="syl son cons cont delrel lat nas strid voi sg cg ant cor distr lab hi lo back round velaric tense long"
+aux_ctc="syl son cons cont delrel lat nas strid voi sg cg ant cor distr lab hi lo back round velaric tense"
 
 
 ./asr.sh \
