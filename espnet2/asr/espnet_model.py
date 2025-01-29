@@ -407,7 +407,7 @@ class ESPnetASRModel(AbsESPnetModel):
                                     "Aux. CTC tasks were specified but no data was found"
                                 )
                             layer_interctc_loss_count += 1
-                if loss_ic is None:
+                elif loss_ic is None:
                     # if auxiliary data, calculate loss using the final text
                     #   for this intermediate layer
                     loss_ic, cer_ic = self._calc_ctc_loss(
@@ -418,6 +418,7 @@ class ESPnetASRModel(AbsESPnetModel):
                         loss_ic.backward(retain_graph=True)
                     # TODO: not sure if loss_ic can be None after aux_ctc
                     layer_interctc_loss_count += 1
+
                 # Collect Intermediate CTC stats
                 #   average the loss/CER among each intermediate CTC
                 stats["loss_interctc_layer{}".format(layer_idx)] = (
@@ -429,7 +430,8 @@ class ESPnetASRModel(AbsESPnetModel):
                     if cer_ic is not None else None
                 )
                 interctc_loss_count += layer_interctc_loss_count
-                loss_interctc = loss_interctc + loss_ic
+                if loss_ic is not None:
+                    loss_interctc = loss_interctc + loss_ic
 
             # note: len(losses_interctc) != len(intermediate_outs)
             #   when the same layer is used for multiple intermediate losses
