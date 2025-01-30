@@ -1,5 +1,5 @@
 import logging
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from typing import Dict, List, Optional, Tuple, Union
 import json
 
@@ -76,6 +76,7 @@ class ESPnetASRModel(AbsESPnetModel):
         extract_feats_in_collect_stats: bool = True,
         lang_token_id: int = -1,
         freeze_encoder_updates: int = 0,
+        frontend_gradients: bool = False,
     ):
         assert 0.0 <= ctc_weight <= 1.0, ctc_weight
         assert 0.0 <= interctc_weight < 1.0, interctc_weight
@@ -109,6 +110,8 @@ class ESPnetASRModel(AbsESPnetModel):
         self.masker = masker
         self.postencoder = postencoder
         self.encoder = encoder
+
+        self.frontend_gradients = frontend_gradients
 
         if not hasattr(self.encoder, "interctc_use_conditioning"):
             self.encoder.interctc_use_conditioning = False
@@ -518,7 +521,7 @@ class ESPnetASRModel(AbsESPnetModel):
         """
         self.global_step += 1
         # 1. Extract feats
-        with torch.no_grad():
+        with nullcontext() if self.frontend_gradients else torch.no_grad():
             feats, feats_lengths = self._extract_feats(speech, speech_lengths)
 
         # 2. Data augmentation

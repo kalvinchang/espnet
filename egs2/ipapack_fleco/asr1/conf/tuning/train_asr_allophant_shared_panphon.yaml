@@ -7,8 +7,10 @@ frontend: s3prl
 frontend_conf:
     frontend_conf:
         upstream: xls_r_300m
+        normalize: true
     download_dir: ./hub
-    multilayer_feature: True
+    eval_mode: false
+    multilayer_feature: false
 
 normalize: null
 
@@ -50,6 +52,7 @@ encoder_conf:
     utt_id_separator: "_"
 
 model_conf:
+    frontend_gradients: true
     extract_feats_in_collect_stats: false
     ctc_weight: 1.0
     interctc_weight: 0.5
@@ -89,7 +92,7 @@ num_workers: 32
 sort_in_batch: descending
 sort_batch: descending
 batch_type: numel
-batch_bins: 20000000
+batch_bins: 2500000
 accum_grad: 4
 max_epoch: 45
 patience: none
@@ -109,13 +112,17 @@ use_amp: false
 cudnn_deterministic: false
 cudnn_benchmark: false
 
-optim: adam
+optim: adamw
 optim_conf:
     lr: 0.0003
     weight_decay: 0.000001
+    betas:
+    - 0.9
+    - 0.98
+    eps: 1.0e-06
 scheduler: warmuplr
 scheduler_conf:
-    warmup_steps: 625 # 2500
+    warmup_steps: 2500  # 625
 
 ctc_conf:
     zero_infinity: true

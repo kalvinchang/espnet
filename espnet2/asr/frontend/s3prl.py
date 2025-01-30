@@ -21,6 +21,7 @@ class S3prlFrontend(AbsFrontend):
         frontend_conf: Optional[dict] = get_default_kwargs(Frontend),
         download_dir: Optional[str] = None,
         multilayer_feature: bool = False,
+        eval_mode: bool = True,
         layer: int = -1,
     ):
         try:
@@ -53,7 +54,9 @@ class S3prlFrontend(AbsFrontend):
         if getattr(upstream.upstream, "model", None):
             if getattr(upstream.upstream.model, "feature_grad_mult", None) is not None:
                 upstream.upstream.model.feature_grad_mult = 1.0
-        upstream.eval()
+
+        if eval_mode:
+            upstream.eval()
 
         if layer != -1:
             layer_selections = [layer]
