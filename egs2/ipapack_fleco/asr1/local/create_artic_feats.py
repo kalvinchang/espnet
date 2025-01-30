@@ -61,8 +61,11 @@ if __name__ == "__main__":
 
             # map utt -> feat -> list of values
             utt_featlist = { feat:[] for feat in artic_feats }
-            for phoneme in phonemes:
-                if isinstance(ft, FeatureTable):
+            if isinstance(ft, FeatureTable):
+                for phoneme in phonemes:
+                    # Ignore unknown tokens from the validation set
+                    if phoneme == "<unk>":
+                        continue
                     fts = ft.word_fts(phoneme)
                     if len(fts) == 0:
                         oov_phonemes.add(phoneme)
@@ -70,7 +73,11 @@ if __name__ == "__main__":
 
                     for feature, value in zip(artic_feats, fts[0].strings()):
                         utt_featlist[feature].append(value)
-                else:
+            else:
+                for phoneme in phonemes:
+                    # Ignore unknown tokens from the validation set
+                    if phoneme == "<unk>":
+                        continue
                     # Get Phoible feature contours for each phoneme
                     try:
                         fts = ft.feature_vector(phoneme)

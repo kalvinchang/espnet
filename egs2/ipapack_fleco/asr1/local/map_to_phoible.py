@@ -298,7 +298,7 @@ def _remap_phonemes(
             remapped = [
                 remapped
                 for phoneme in map(_normalize_phoneme, transcription)
-                for remapped in mapping.get(phoneme, (phoneme,))
+                for remapped in mapping.get(phoneme, ("<unk>",))
             ]
 
             out_file.write(f"{utt_id} {' '.join(remapped)}\n")

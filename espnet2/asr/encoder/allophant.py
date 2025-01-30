@@ -106,12 +106,12 @@ class AllophoneMapping(nn.Module):
             device=phone_logits.device,
         )
         for index, language_id in enumerate(map(int, language_ids)):
-            logits = phone_logits[:, index].unsqueeze(-1)
+            logits = phone_logits[index].unsqueeze(-1)
             # Max pooling after multiplying with the allophone matrix
             # Replace masked positions with negative infinity
             # since this results in zero probabilities after softmax for phone and
             # phoneme combinations that don't occur in the allophone mappings
-            batch_matrices[:, index] = _multiply_allophone_matrix(
+            batch_matrices[index] = _multiply_allophone_matrix(
                 logits,
                 self._allophone_matrices[language_id],
                 self._allophone_mask[language_id],
@@ -510,8 +510,8 @@ class AllophantLayers(AbsEncoder):
                 output, target_feature_indices
             )
 
-        # Only use the allophone layer for training
-        if self._allophone_layer is not None and self.training:
+        # Only use the allophone layer unless another inventory is specified
+        if self._allophone_layer is not None and not use_language_vocabulary and target_feature_indices is None:
             language_ids = torch.tensor(
                 [self._allophone_layer.index_map[i] for i in self._utterance_langcodes(utt_id)],
                 dtype=torch.int64,

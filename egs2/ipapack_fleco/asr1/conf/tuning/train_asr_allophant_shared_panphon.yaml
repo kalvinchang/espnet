@@ -10,6 +10,8 @@ frontend_conf:
     download_dir: ./hub
     multilayer_feature: True
 
+normalize: null
+
 encoder: allophant
 encoder_conf:
     phoneme_embedding_size: 640
