@@ -1650,6 +1650,11 @@ if [ ${stage} -le 12 ] && [ ${stop_stage} -ge 12 ] && ! [[ " ${skip_stages} " =~
             done
         done
 
+        # Post-processing for handling language dependent inventories with inventory-dependent indices
+        python local/map_decoded_indices.py \
+          --decoded_path "${_dir}" \
+          --decode_config_path "${inference_config}" \
+          --model_config_path "${asr_exp}"/config.yaml
     done
 fi
 
