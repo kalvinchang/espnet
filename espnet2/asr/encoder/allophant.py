@@ -521,10 +521,6 @@ class AllophantLayers(AbsEncoder):
                 output, language_ids, target_feature_indices is not None
             )
 
-            # TODO: Might cause issues with mixed precision training
-            # Apply l2 penalty while training
-            self._allophone_layer.l2_penalty().backward(retain_graph=True)
-
         # Return frontend output as an intermediate output for auxiliary CTC
         return (output, [(0, xs_pad), (1, output)]), ilens, None
 
@@ -535,3 +531,7 @@ class AllophantLayers(AbsEncoder):
             return self._output_size
 
         raise Exception(f"{index_key!r} is an invalid intermediate layer index for Allophant")
+
+    def l2_penalty(self) -> Optional[Tensor]:
+        if self._allophone_layer is not None:
+            return self._allophone_layer.l2_penalty()

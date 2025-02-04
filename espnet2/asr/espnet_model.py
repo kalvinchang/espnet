@@ -285,7 +285,7 @@ class ESPnetASRModel(AbsESPnetModel):
         text: torch.Tensor,
         text_lengths: torch.Tensor,
         **kwargs,
-    ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor], torch.Tensor]:
+    ) -> Tuple[List[torch.Tensor], Dict[str, torch.Tensor], torch.Tensor]:
         """Frontend + Encoder + Decoder + Calc loss
 
         Args:
@@ -335,6 +335,9 @@ class ESPnetASRModel(AbsESPnetModel):
             stats["loss_ctc"] = loss_ctc.detach() if loss_ctc is not None else None
             stats["cer_ctc"] = cer_ctc
 
+        # Track multiple losses
+        losses = []
+
         # Intermediate CTC (optional)
         loss_interctc, interctc_loss_count = 0.0, 0
         if self.interctc_weight != 0.0 and intermediate_outs is not None:
@@ -364,7 +367,7 @@ class ESPnetASRModel(AbsESPnetModel):
                                     # backprop should be done here
                                     # do not add to accumulator to avoid memory issue
                                     if self.training:
-                                        aux_loss_ic.backward(retain_graph=True)
+                                        losses.append(aux_loss_ic)
                                     if loss_ic is None:
                                         loss_ic = aux_loss_ic.detach()
                                     else:
@@ -395,7 +398,7 @@ class ESPnetASRModel(AbsESPnetModel):
                                 # backprop should be done here
                                 # do not add to accumulator to avoid memory issue
                                 if self.training:
-                                    aux_loss_ic.backward(retain_graph=True)
+                                    losses.append(aux_loss_ic)
                                 if loss_ic is None:
                                     loss_ic = aux_loss_ic.detach()
                                 else:
@@ -418,7 +421,7 @@ class ESPnetASRModel(AbsESPnetModel):
                     )
                     # Backprop here for consistency with other aux CTC losses
                     if self.training:
-                        loss_ic.backward(retain_graph=True)
+                        losses.append(loss_ic)
                     # TODO: not sure if loss_ic can be None after aux_ctc
                     layer_interctc_loss_count += 1
 
@@ -495,9 +498,16 @@ class ESPnetASRModel(AbsESPnetModel):
         # Collect total loss stats
         stats["loss"] = loss.detach()
 
+        # Apply L2 regularization as an additional loss term
+        if hasattr(self.encoder, "l2_penalty"):
+            l2_loss = self.encoder.l2_penalty()
+            if l2_loss is not None:
+                losses.append(l2_loss)
+
+        losses.append(loss)
         # force_gatherable: to-device and to-tensor if scalar for DataParallel
-        loss, stats, weight = force_gatherable((loss, stats, batch_size), loss.device)
-        return loss, stats, weight
+        *losses, stats, weight = force_gatherable((*losses, stats, batch_size), loss.device)
+        return list(losses), stats, weight
 
     def collect_feats(
         self,

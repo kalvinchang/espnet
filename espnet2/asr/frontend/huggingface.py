@@ -33,6 +33,7 @@ class HuggingFaceFrontend(AbsFrontend):
             raise ImportError("Please install `transformers`")
 
         super().__init__()
+
         if load_pretrained:
             self.encoder = AutoModel.from_pretrained(model, cache_dir=download_dir)
         else:
@@ -57,6 +58,18 @@ class HuggingFaceFrontend(AbsFrontend):
 
     def output_size(self) -> int:
         return self.encoder.config.hidden_size
+
+    def _downsampled_lengths(self, lengths: torch.Tensor) -> torch.Tensor:
+        # Handle lengths downsampled with convolution kernels for supported models
+        config = self.encoder.config
+        if not (hasattr(config, "conv_kernel") and hasattr(config, "conv_stride")):
+            return lengths
+
+        # Compute downsampling for each layer
+        for kernel_size, stride in zip(config.conv_kernel, config.conv_stride):
+            lengths = torch.div(lengths - kernel_size, stride, rounding_mode="floor") + 1
+
+        return lengths
 
     def forward(
         self, inputs: torch.Tensor, input_lengths: torch.Tensor
@@ -87,6 +100,7 @@ class HuggingFaceFrontend(AbsFrontend):
                 encoded_lengths = torch.tensor(encoded.input_values.shape)
             else:
                 encoded_lengths = torch.sum(encoded.attention_mask, dim=-1)
+            encoded_lengths = self._downsampled_lengths(encoded_lengths)
 
         encoded = self.encoder(**encoded).last_hidden_state
         if torch.max(encoded_lengths) != encoded.size(1):

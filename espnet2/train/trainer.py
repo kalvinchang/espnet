@@ -638,7 +638,7 @@ class Trainer:
                     # Supporting two patterns for the returned value from the model
                     #   a. dict type
                     if isinstance(retval, dict):
-                        loss = retval["loss"]
+                        losses = retval["loss"]
                         stats = retval["stats"]
                         weight = retval["weight"]
                         optim_idx = retval.get("optim_idx")
@@ -666,33 +666,44 @@ class Trainer:
 
                     #   b. tuple or list type
                     else:
-                        loss, stats, weight = retval
+                        losses, stats, weight = retval
                         optim_idx = None
+
                 del retval
                 stats = {k: v for k, v in stats.items() if v is not None}
 
-                loss /= accum_grad
+                if not isinstance(losses, list):
+                    losses = [losses]
+
+                for i in range(len(losses)):
+                    losses[i] /= accum_grad
+
             if not distributed_option.distributed or distributed_option.dist_rank == 0:
                 reporter.register(stats, weight)
             del stats, weight
 
             with reporter.measure_time("backward_time"):
-                if scaler is not None:
-                    # Scales loss.  Calls backward() on scaled loss
-                    # to create scaled gradients.
-                    # Backward passes under autocast are not recommended.
-                    # Backward ops run in the same dtype autocast chose
-                    # for corresponding forward ops.
-                    if iiter % accum_grad == 0:
-                        scaler.scale(loss).backward()
-                    elif distributed_option.distributed:
-                        with model.no_sync():
-                            scaler.scale(loss).backward()
+                last_loss = len(losses) - 1
+                for i, loss in enumerate(losses):
+                    # Retain graph for all but the final loss
+                    extra_backward_args = {} if i == last_loss else {"retain_graph": True}
+                    if scaler is not None:
+                        # Scales loss.  Calls backward() on scaled loss
+                        # to create scaled gradients.
+                        # Backward passes under autocast are not recommended.
+                        # Backward ops run in the same dtype autocast chose
+                        # for corresponding forward ops.
+                        if iiter % accum_grad == 0:
+                            scaler.scale(loss).backward(**extra_backward_args)
+                        elif distributed_option.distributed:
+                            with model.no_sync():
+                                scaler.scale(loss).backward(**extra_backward_args)
+                        else:
+                            scaler.scale(loss).backward(**extra_backward_args)
                     else:
-                        scaler.scale(loss).backward()
-                else:
-                    loss.backward()
-            del loss
+                        loss.backward(**extra_backward_args)
+
+            del losses
 
             if iiter % accum_grad == 0:
                 if scaler is not None:
