@@ -197,7 +197,7 @@ num_workers: 32
 sort_in_batch: descending
 sort_batch: descending
 batch_type: numel
-batch_bins: 2500000
+batch_bins: 4500000
 accum_grad: 4
 max_epoch: 45
 patience: none
@@ -209,6 +209,7 @@ best_model_criterion:
 -   - valid
     - total_count
     - max
+unused_parameters: true
 keep_nbest_models: 10
 
 use_amp: true

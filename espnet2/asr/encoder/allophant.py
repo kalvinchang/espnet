@@ -303,6 +303,9 @@ def _allophone_mapping_with_fallback(
     ), list(phone_indices)
 
 
+EncoderOutputs = Tuple[Tensor, List[Tuple[int, Tensor]]]
+
+
 class AllophantLayers(AbsEncoder):
     @typechecked
     def __init__(
@@ -481,7 +484,7 @@ class AllophantLayers(AbsEncoder):
         utt_id: Optional[List[str]] = None,
         target_feature_indices: Optional[Tensor] = None,
         use_language_vocabulary: bool = False,
-    ) -> Tuple[Tuple[Tensor, List[Tuple[int, Tensor]]], Tensor, Optional[Tensor]]:
+    ) -> Tuple[Union[EncoderOutputs, Dict[str, Union[Tensor, EncoderOutputs]]], Tensor, Optional[Tensor]]:
         if utt_id is None:
             raise ValueError(
                 f"{self.__class__.__name__}.encode was called without utt_id, "
@@ -521,6 +524,11 @@ class AllophantLayers(AbsEncoder):
                 output, language_ids, target_feature_indices is not None
             )
 
+            return {
+                "l2_penalty": self._allophone_layer.l2_penalty(),
+                "output": (output, [(0, xs_pad), (1, output)]),
+            }, ilens, None
+
         # Return frontend output as an intermediate output for auxiliary CTC
         return (output, [(0, xs_pad), (1, output)]), ilens, None
 
@@ -531,7 +539,3 @@ class AllophantLayers(AbsEncoder):
             return self._output_size
 
         raise Exception(f"{index_key!r} is an invalid intermediate layer index for Allophant")
-
-    def l2_penalty(self) -> Optional[Tensor]:
-        if self._allophone_layer is not None:
-            return self._allophone_layer.l2_penalty()

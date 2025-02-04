@@ -678,32 +678,33 @@ class Trainer:
                 for i in range(len(losses)):
                     losses[i] /= accum_grad
 
+                loss = torch.cat(losses).sum()
+
             if not distributed_option.distributed or distributed_option.dist_rank == 0:
                 reporter.register(stats, weight)
             del stats, weight
 
             with reporter.measure_time("backward_time"):
-                last_loss = len(losses) - 1
-                for i, loss in enumerate(losses):
-                    # Retain graph for all but the final loss
-                    extra_backward_args = {} if i == last_loss else {"retain_graph": True}
-                    if scaler is not None:
-                        # Scales loss.  Calls backward() on scaled loss
-                        # to create scaled gradients.
-                        # Backward passes under autocast are not recommended.
-                        # Backward ops run in the same dtype autocast chose
-                        # for corresponding forward ops.
-                        if iiter % accum_grad == 0:
-                            scaler.scale(loss).backward(**extra_backward_args)
-                        elif distributed_option.distributed:
-                            with model.no_sync():
-                                scaler.scale(loss).backward(**extra_backward_args)
-                        else:
-                            scaler.scale(loss).backward(**extra_backward_args)
+                if scaler is not None:
+                    # Scales loss.  Calls backward() on scaled loss
+                    # to create scaled gradients.
+                    # Backward passes under autocast are not recommended.
+                    # Backward ops run in the same dtype autocast chose
+                    # for corresponding forward ops.
+                    # Only sync in distributed mode if on the final iteration of gradient accumulation
+                    # and the final loss of a multi-task model
+                    if iiter % accum_grad == 0:
+                        scaler.scale(loss).backward()
+                    elif distributed_option.distributed:
+                        with model.no_sync():
+                            scaler.scale(loss).backward()
                     else:
-                        loss.backward(**extra_backward_args)
+                        scaler.scale(loss).backward()
+                else:
+                    loss.backward()
 
             del losses
+            del loss
 
             if iiter % accum_grad == 0:
                 if scaler is not None:

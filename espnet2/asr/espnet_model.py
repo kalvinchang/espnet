@@ -312,6 +312,14 @@ class ESPnetASRModel(AbsESPnetModel):
 
         # 1. Encoder
         encoder_out, encoder_out_lens = self.encode(speech, speech_lengths, utt_id=kwargs["utt_id"])
+
+        # Track multiple losses
+        losses = []
+
+        if isinstance(encoder_out, dict):
+            losses.append(encoder_out["l2_penalty"])
+            encoder_out = encoder_out["output"]
+
         if isinstance(encoder_out, tuple):
             intermediate_outs = encoder_out[1]
             encoder_out = encoder_out[0]
@@ -334,9 +342,6 @@ class ESPnetASRModel(AbsESPnetModel):
             # Collect CTC branch stats
             stats["loss_ctc"] = loss_ctc.detach() if loss_ctc is not None else None
             stats["cer_ctc"] = cer_ctc
-
-        # Track multiple losses
-        losses = []
 
         # Intermediate CTC (optional)
         loss_interctc, interctc_loss_count = 0.0, 0
@@ -498,12 +503,6 @@ class ESPnetASRModel(AbsESPnetModel):
         # Collect total loss stats
         stats["loss"] = loss.detach()
 
-        # Apply L2 regularization as an additional loss term
-        if hasattr(self.encoder, "l2_penalty"):
-            l2_loss = self.encoder.l2_penalty()
-            if l2_loss is not None:
-                losses.append(l2_loss)
-
         losses.append(loss)
         # force_gatherable: to-device and to-tensor if scalar for DataParallel
         *losses, stats, weight = force_gatherable((*losses, stats, batch_size), loss.device)
@@ -522,7 +521,7 @@ class ESPnetASRModel(AbsESPnetModel):
 
     def encode(
         self, speech: torch.Tensor, speech_lengths: torch.Tensor, max_layer: int = None, utt_id: Union[List[str], None] = None, use_language_vocabulary: bool = False,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> Tuple[Union[Dict[str, torch.Tensor], torch.Tensor], torch.Tensor]:
         """Frontend + Encoder. Note that this method is used by asr_inference.py
 
         Args:
@@ -595,6 +594,13 @@ class ESPnetASRModel(AbsESPnetModel):
                 feats, feats_lengths, **extra_args
             )
 
+        # Apply L2 regularization as an additional loss term
+        if isinstance(encoder_out, dict) and  "l2_penalty" in encoder_out:
+            l2_penalty = encoder_out["l2_penalty"]
+            encoder_out = encoder_out["output"]
+        else:
+            l2_penalty = None
+
         intermediate_outs = None
         if isinstance(encoder_out, tuple):
             intermediate_outs = encoder_out[1]
@@ -621,6 +627,9 @@ class ESPnetASRModel(AbsESPnetModel):
 
         if intermediate_outs is not None:
             return (encoder_out, intermediate_outs), encoder_out_lens
+
+        if l2_penalty is not None:
+            encoder_out = {"l2_penalty": l2_penalty, "output": encoder_out}
 
         return encoder_out, encoder_out_lens
 
@@ -865,6 +874,9 @@ class ESPnetASRModel(AbsESPnetModel):
 
         # 1. Encoder
         encoder_out, encoder_out_lens = self.encode(speech, speech_lengths)
+        if isinstance(encoder_out, dict):
+            encoder_out = encoder_out["output"]
+
         if isinstance(encoder_out, tuple):
             encoder_out = encoder_out[0]
 
