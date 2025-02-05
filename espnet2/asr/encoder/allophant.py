@@ -524,10 +524,13 @@ class AllophantLayers(AbsEncoder):
                 output, language_ids, target_feature_indices is not None
             )
 
-            return {
-                "l2_penalty": self._allophone_layer.l2_penalty(),
-                "output": (output, [(0, xs_pad), (1, output)]),
-            }, ilens, None
+            # Return l2_penalty during training to keep the allophone matrix
+            # close to its initialization following Li et al., 2020
+            if self.training:
+                return {
+                    "l2_penalty": self._allophone_layer.l2_penalty(),
+                    "output": (output, [(0, xs_pad), (1, output)]),
+                }, ilens, None
 
         # Return frontend output as an intermediate output for auxiliary CTC
         return (output, [(0, xs_pad), (1, output)]), ilens, None

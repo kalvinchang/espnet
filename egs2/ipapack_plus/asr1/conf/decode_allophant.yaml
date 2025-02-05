@@ -1,0 +1,8 @@
+beam_size: 1
+ctc_weight: 1.0
+lm_weight: 0.0
+maxlenratio: 0.0
+minlenratio: 0.0
+penalty: 0.0
+disable_interctc_decoding: true
+use_language_vocabulary: true

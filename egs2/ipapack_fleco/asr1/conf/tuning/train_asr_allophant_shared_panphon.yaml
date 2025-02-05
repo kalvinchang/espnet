@@ -110,7 +110,7 @@ cudnn_benchmark: false
 
 optim: adamw
 optim_conf:
-    lr: 0.0003
+    lr: 0.0005
     weight_decay: 0.000001
     betas:
     - 0.9
