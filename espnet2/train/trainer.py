@@ -678,8 +678,6 @@ class Trainer:
                 for i in range(len(losses)):
                     losses[i] /= accum_grad
 
-                loss = torch.cat(losses).sum()
-
             if not distributed_option.distributed or distributed_option.dist_rank == 0:
                 reporter.register(stats, weight)
             del stats, weight
@@ -694,17 +692,16 @@ class Trainer:
                     # Only sync in distributed mode if on the final iteration of gradient accumulation
                     # and the final loss of a multi-task model
                     if iiter % accum_grad == 0:
-                        scaler.scale(loss).backward()
+                        torch.autograd.backward(scaler.scale(losses))
                     elif distributed_option.distributed:
                         with model.no_sync():
-                            scaler.scale(loss).backward()
+                            torch.autograd.backward(scaler.scale(losses))
                     else:
-                        scaler.scale(loss).backward()
+                        torch.autograd.backward(scaler.scale(losses))
                 else:
-                    loss.backward()
+                    torch.autograd.backward(losses)
 
             del losses
-            del loss
 
             if iiter % accum_grad == 0:
                 if scaler is not None:
