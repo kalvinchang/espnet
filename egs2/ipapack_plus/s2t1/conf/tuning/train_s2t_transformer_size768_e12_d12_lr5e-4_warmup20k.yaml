@@ -1,0 +1,120 @@
+# based mostly on OWSM v1 base (272m params)
+#   https://huggingface.co/espnet/owsm_v1
+# and some hyperparameters from OWSM v3.1 base (101m params)
+#   https://huggingface.co/espnet/owsm_v3.1_ebf_small/raw/main/exp/s2t_train_s2t_ebf_conv2d_size768_e9_d9_piecewise_lr5e-4_warmup60k_flashattn_raw_bpe50000/config.yaml
+
+# TODO: rename the file - add the warmup and flashattn
+
+preprocessor: s2t
+preprocessor_conf:
+    text_prev_name: text_prev
+    text_ctc_name: text_ctc
+    fs: 16000
+    na_symbol: "<na>"
+    speech_length: 20
+    speech_resolution: 0.02
+    speech_init_silence: 20
+    text_prev_apply_prob: 1.0 # whether to condition on text_prev
+    # if text_prev is <na>, applying text_prev doesn't do anything
+    #   thus for ASR and phoneme recognition, this doesn't do anything
+    #   but for G2P and P2G, what removing the context does is to
+    #   rely only on the audio
+    # TODO: fully removing the context might be too harsh
+    #   need to modify so we implement partial masking
+    time_apply_prob: 1.0
+    # we don't have timestamps
+    #   time_apply_prob is the probability at which timestamps are KEPT
+    #   if the code to remove timestamps is applied, then the timestamp token will be duplicated
+    notime_symbol: "<notimestamps>"
+    first_time_symbol: "<0.00>"
+    last_time_symbol: "<20.00>"
+
+frontend_conf:
+    n_fft: 512
+    win_length: 400
+    hop_length: 160
+
+# TODO: add back
+# specaug: specaug
+# specaug_conf:
+#     apply_time_warp: false
+#     time_warp_window: 5
+#     time_warp_mode: bicubic
+#     apply_freq_mask: true
+#     freq_mask_width_range:
+#     - 0
+#     - 27
+#     num_freq_mask: 2
+#     apply_time_mask: true
+#     time_mask_width_ratio_range:
+#     - 0.
+#     - 0.05
+#     num_time_mask: 5
+
+encoder: transformer
+encoder_conf:
+    output_size: 768
+    attention_heads: 12
+    linear_units: 3072
+    num_blocks: 12
+    dropout_rate: 0.1
+    positional_dropout_rate: 0.1
+    attention_dropout_rate: 0.1
+    input_layer: conv2d2
+    normalize_before: true
+    use_flash_attn: true
+
+decoder: transformer
+decoder_conf:
+    attention_heads: 12
+    linear_units: 3072
+    num_blocks: 12
+    dropout_rate: 0.1
+    positional_dropout_rate: 0.1
+    self_attention_dropout_rate: 0.1
+    src_attention_dropout_rate: 0.1
+    use_flash_attn: true
+
+model_conf:
+    ctc_weight: 0.3
+    lsm_weight: 0.1
+    length_normalized_loss: false
+    sym_na: "<na>"
+
+optim: adamw
+optim_conf:
+    lr: 0.0005
+    betas:
+    - 0.9
+    - 0.98
+    eps: 1.0e-06
+    weight_decay: 0.0
+scheduler: piecewiselinearwarmuplr  # v3.1 but modified hyperparams
+scheduler_conf:
+    warmup_steps_list: [0, 10000, 20000]
+    warmup_lr_list: [0., 0.0002, 0.0005]
+
+batch_type: unsorted
+# global batch size is 256
+batch_size: 128
+accum_grad: 2
+batch_bins: 1000000
+num_iters_per_epoch: 10000
+max_epoch: 60
+patience: none
+init: none
+best_model_criterion:
+-   - valid
+    - acc
+    - max
+-   - valid
+    - total_count
+    - max
+keep_nbest_models: 5
+nbest_averaging_interval: 5     # average ckpt every 5 epochs (v3.1)
+use_amp: true
+num_workers: 4
+unused_parameters: false
+seed: 42
+num_att_plot: 0     # set to 0 due to flash_attn
+sharded_ddp: false
