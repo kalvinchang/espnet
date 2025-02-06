@@ -41,8 +41,7 @@ def subsample(olddir, dataset, newdir, newdataset, ratio):
     # spk2utt should be handled separately
     #   map same speaker ("aaaaa") to all utterances on one line
     file = "spk2utt"
-    os.system(f"awk 'NR % {ratio} == 0' {olddir}/{dataset}/{file} > {currentdir}/{file}")
-    with open(f"{currentdir}/{file}", "r") as spk2utt, open(f"{currentdir}/{file}.tmp", "w") as spk2utt_tmp:
+    with open(f"{olddir}/{dataset}/{file}", "r") as spk2utt, open(f"{currentdir}/{file}.tmp", "w") as spk2utt_tmp:
         lines = spk2utt.readlines()
         assert len(lines) == 1
         lines = lines[0].split(' ')
