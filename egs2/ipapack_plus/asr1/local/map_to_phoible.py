@@ -197,6 +197,7 @@ def extract_vocabulary(
     dump_dir: Path,
     phoneme_indexer: PhoneticAttributeIndexer,
     glottomap: Dict[str, Dict[str, str]],
+    train_split: str = "train",
     phonepiece_pretokenized: bool = False,
     allow_partial_segmentation: bool = False,
     unseen_test_sets: Optional[List[str]] = None,
@@ -215,7 +216,7 @@ def extract_vocabulary(
     training_languages = list(inventories)
 
     # Store all languages from the training set
-    with (dump_dir / "training_languages.json").open("w", encoding="utf-8") as file:
+    with (dump_dir / train_split / "training_languages.json").open("w", encoding="utf-8") as file:
         json.dump({"languages": training_languages}, file)
 
     if unseen_test_sets:
@@ -234,14 +235,14 @@ def extract_vocabulary(
             missing_phonemes |= data_missing
 
     # Store inventories, including phonemes with missing features for debugging purposes
-    with (dump_dir / "inventories.json").open("w", encoding="utf-8") as file:
+    with (dump_dir / train_split / "inventories.json").open("w", encoding="utf-8") as file:
         if missing_phonemes:
             inventories["MISSING"] = sorted(missing_phonemes)
 
         json.dump(inventories, file)
 
     # Store all mappings from the diverse language tags in the utterance IDs to normalized ISO639-3 codes
-    with (dump_dir / "supported_languages.json").open("w", encoding="utf-8") as file:
+    with (dump_dir / train_split / "supported_languages.json").open("w", encoding="utf-8") as file:
         json.dump(language_mappings, file)
 
     print("Phoneme inventories and supported languages extracted")
@@ -309,7 +310,8 @@ def collect_and_map_inventories(
     dump_dir: Path,
     data_dir: Path,
     glottolog_languages: Path,
-    split: str = "train",
+    train_split: str = "train",
+    dev_split: str = "dev",
     phonepiece_pretokenized: bool = False,
     skip: Optional[str] = None,
     unseen_test_sets: Optional[List[str]] = None,
@@ -334,13 +336,13 @@ def collect_and_map_inventories(
         "closest": glottomap["Closest_ISO369P3code"].dropna().to_dict(),
     }
 
-    train_text_path = dump_dir / split / "text"
+    train_text_path = dump_dir / train_split / "text"
 
     if skip == "vocab":
-        with (dump_dir / "inventories.json").open("r", encoding="utf-8") as file:
+        with (dump_dir / train_split / "inventories.json").open("r", encoding="utf-8") as file:
             inventory_lists = json.load(file)
 
-        with (dump_dir / "training_languages.json").open("r", encoding="utf-8") as file:
+        with (dump_dir / train_split / "training_languages.json").open("r", encoding="utf-8") as file:
             training_languages = json.load(file)["languages"]
     else:
         inventory_lists, training_languages = extract_vocabulary(
@@ -348,6 +350,7 @@ def collect_and_map_inventories(
             dump_dir,
             phoneme_indexer,
             glottomap,
+            train_split,
             phonepiece_pretokenized,
             unseen_test_sets=unseen_test_sets,
         )
@@ -436,7 +439,7 @@ def collect_and_map_inventories(
             "target": target_inventory.index.tolist(),
         }
 
-    with (dump_dir / "mappings.json").open("w", encoding="utf-8") as file:
+    with (dump_dir / train_split / "mappings.json").open("w", encoding="utf-8") as file:
         json.dump(phoneme_mappings, file)
 
     if mapping_details_path is not None:
@@ -462,19 +465,19 @@ def collect_and_map_inventories(
     print(f"Wrote new shared inventory to {mapped_tokens_path}")
 
     # Backup original transcriptions
-    train_backup_path = dump_dir / split / "text.original"
+    train_backup_path = dump_dir / train_split / "text.original"
     if not train_backup_path.exists():
         shutil.copy2(train_text_path, train_backup_path)
 
-    dev_text_path = dump_dir / "dev/text"
-    dev_backup_path = dump_dir / "dev/text.original"
+    dev_text_path = dump_dir / dev_split / "text"
+    dev_backup_path = dump_dir / dev_split / "text.original"
     if not dev_backup_path.exists():
         shutil.copy2(dev_text_path, dev_backup_path)
 
     _remap_phonemes(
         train_text_path,
         dump_dir,
-        split,
+        train_split,
         glottomap,
         phoneme_mappings
     )
@@ -482,7 +485,7 @@ def collect_and_map_inventories(
     _remap_phonemes(
         dev_text_path,
         dump_dir,
-        "dev",
+        dev_split,
         glottomap,
         phoneme_mappings
     )
@@ -503,9 +506,14 @@ def main(args: Sequence[str]) -> None:
         help="directory containing processed asr data from stage 4",
     )
     parser.add_argument(
-        "--split",
+        "--train_split",
         default="train",
         help="split to use for generating inventories",
+    )
+    parser.add_argument(
+        "--dev_split",
+        default="dev",
+        help="split name of the validation data",
     )
     parser.add_argument(
         "--glottolog_languages",
@@ -558,7 +566,8 @@ def main(args: Sequence[str]) -> None:
         arguments.dump_dir,
         arguments.data_dir,
         arguments.glottolog_languages,
-        arguments.split,
+        arguments.train_split,
+        arguments.dev_split,
         arguments.phonepiece_pretokenized,
         skip,
         arguments.unseen_test_sets.split(),

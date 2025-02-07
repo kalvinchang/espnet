@@ -1,5 +1,7 @@
 import argparse
 import json
+from multiprocessing import Pool, Manager
+import multiprocessing
 
 from panphon import FeatureTable
 from tqdm import tqdm
@@ -29,6 +31,12 @@ if __name__ == "__main__":
         action="store_true",
         help="will raise an error if the feature text files already exist",
     )
+    parser.add_argument(
+        "--nj",
+        type=int,
+        default=min(8, multiprocessing.cpu_count()),
+        help="Number of jobs for extracting articulatory features",
+    )
 
     args = parser.parse_args()
 
@@ -50,25 +58,30 @@ if __name__ == "__main__":
         for feat in artic_feats:
             artic_feat_files[feat] = open(f"{args.data_dir}/{feat}", "x" if args.dont_overwrite else "w", encoding="utf-8")
 
-        oov_phonemes = set()
-
         print("generating articulatory features")
         artic_feat_lists = { feat:[] for feat in artic_feats }
-        for utt in tqdm(utts):
+
+        def process_utterance(utt):
+            oov_phonemes, utt = utt
+
             utt_split = utt.split()
             utt_id = utt_split[0]
             phonemes = utt_split[1:]
 
             # map utt -> feat -> list of values
             utt_featlist = { feat:[] for feat in artic_feats }
+
             if isinstance(ft, FeatureTable):
                 for phoneme in phonemes:
+                    phoneme = _normalize_phoneme_phoible(phoneme)
                     # Ignore unknown tokens from the validation set
                     if phoneme == "<unk>":
                         continue
                     fts = ft.word_fts(phoneme)
                     if len(fts) == 0:
-                        oov_phonemes.add(phoneme)
+                        if phoneme not in oov_phonemes:
+                            tqdm.write(f"Found OOV phoneme: {phoneme!r}")
+                        oov_phonemes[phoneme] = None
                         continue
 
                     for feature, value in zip(artic_feats, fts[0].strings()):
@@ -82,16 +95,26 @@ if __name__ == "__main__":
                     try:
                         fts = ft.feature_vector(phoneme)
                     except KeyError:
-                        oov_phonemes.add(phoneme)
+                        oov_phonemes[phoneme] = None
                         continue
                     for feature, values in zip(artic_feats, fts):
                         utt_featlist[feature].extend(ft.feature_values(feature, values))
 
-            # use a list instead of map in case utt_id is not alphabetical
-            for feat in artic_feats:
-                feats = utt_featlist[feat]
-                feat_vocabularies[feat].update(feats)
-                artic_feat_files[feat].write(f"{utt_id} {' '.join(feats)}\n")
+            return utt_id, utt_featlist
+
+        with Manager() as manager, Pool(args.nj) as pool:
+            oov_phonemes = manager.dict()
+            for utt_id, utt_featlist in tqdm(pool.imap(process_utterance, ((oov_phonemes, utterance) for utterance in utts), chunksize=1000), total=len(utts)):
+                # use a list instead of map in case utt_id is not alphabetical
+                for feat in artic_feats:
+                    feats = utt_featlist[feat]
+                    feat_vocabularies[feat].update(feats)
+                    artic_feat_files[feat].write(f"{utt_id} {' '.join(feats)}\n")
+
+            if len(oov_phonemes) > 0:
+                print(len(oov_phonemes), "OOV phonemes not covered by panphon:")
+                print("\n".join(oov_phonemes.keys()))
+                raise Exception("OOV phoneme. Please fix in preprocessing")
 
         # write in batches to make it less I/O intensive
         print("writing")
@@ -103,8 +126,3 @@ if __name__ == "__main__":
             with open(f"{args.data_dir}/feature_values.json", "x" if args.dont_overwrite else "w", encoding="utf-8") as file:
                 # Sort vocabularies for consistency
                 json.dump({feat: ["<blank>"] + sorted(vocabulary) for feat, vocabulary in feat_vocabularies.items()}, file)
-
-        if len(oov_phonemes) > 0:
-            print(len(oov_phonemes), "OOV phonemes not covered by panphon:")
-            print("\n".join(oov_phonemes))
-            raise Exception("OOV phoneme. Please fix in preprocessing")

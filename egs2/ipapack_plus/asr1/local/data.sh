@@ -12,7 +12,11 @@ stop_stage=100
 min_wav_duration=0.5
 SECONDS=0
 
-asr_data_dir=
+train_data_dir=
+valid_data_dir=
+unseen_test_sets=
+ignore_language_allophones=
+feature_type=panphon
 
 
 log() {
@@ -49,18 +53,24 @@ if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
 
     python3 local/data_prep.py --source_dir ${IPAPACK_PLUS} --target_dir data --min_wav_length ${min_wav_duration}
 
-    for dir in data/train data/dev; do
-        utils/fix_data_dir.sh $dir
-        utils/validate_data_dir.sh --no-feats $dir || exit 1
+    for dir in data/train data/dev data/test_fleurs data/test_doreco; do
+        utils/fix_data_dir.sh "$dir"
+        utils/validate_data_dir.sh --no-feats "$dir" || exit 1
     done
-
-    # fix doreco separately
-    python local/fix_doreco.py
+fi
 
 if [ ${stage} -eq 2 ] && [ ${stop_stage} -ge 2 ]; then
     log "data prep stage 2: Additional data processing - This should only be called after ASR stage 4"
-    # create file of articulatory features for auxiliary CTC
-    python local/create_artic_feats.py --data_dir ${asr_data_dir}
+    # Create files of articulatory features for auxiliary CTC, phoneme inventories and phoneme mappings if the feature_type is set to PHOIBLE
+    if [ "${feature_type}" = "panphon" ]; then
+        python local/create_artic_feats.py --feature_type "${feature_type}" --data_dir "${train_data_dir}" --write_vocabulary
+        python local/create_artic_feats.py --feature_type "${feature_type}" --data_dir "${valid_data_dir}"
+        python local/map_to_phoible.py --skip_mapping --unseen_test_sets "${unseen_test_sets}" --phonepiece_pretokenized
+    else
+        python local/map_to_phoible.py --unseen_test_sets "${unseen_test_sets}" --phonepiece_pretokenized --ignore_language_allophones "${ignore_language_allophones}"
+        python local/create_artic_feats.py --feature_type "${feature_type}" --data_dir "${train_data_dir}_mapped" --write_vocabulary
+        python local/create_artic_feats.py --feature_type "${feature_type}" --data_dir "${valid_data_dir}_mapped"
+    fi
 fi
 
 log "Successfully finished. [elapsed=${SECONDS}s]"
