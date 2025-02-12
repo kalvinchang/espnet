@@ -73,7 +73,6 @@ if __name__ == "__main__":
 
             if isinstance(ft, FeatureTable):
                 for phoneme in phonemes:
-                    phoneme = _normalize_phoneme_phoible(phoneme)
                     # Ignore unknown tokens from the validation set
                     if phoneme == "<unk>":
                         continue

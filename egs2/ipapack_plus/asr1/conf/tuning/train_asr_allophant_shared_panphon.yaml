@@ -20,7 +20,7 @@ encoder_conf:
     feature_type: panphon
     use_allophone_layer: false
     phoneme_inventory_file: data/token_list/word/tokens.txt
-    composition_inventories_file: dump/raw/inventories.json
+    composition_inventories_file: dump/raw/train_allophant/inventories.json
     composition_features:
       - syl
       - son
@@ -44,7 +44,7 @@ encoder_conf:
       - velaric
       - tense
       # - long
-    language_id_mapping_path: dump/raw/supported_languages.json
+    language_id_mapping_path: dump/raw/train_allophant/supported_languages.json
     utt_id_separator: "_"
 
 model_conf:
@@ -54,7 +54,7 @@ model_conf:
     interctc_weight: 0.5
     lsm_weight: 0.1
     length_normalized_loss: false
-    aux_ctc_share_vocab: "dump/raw/train/feature_values.json"
+    aux_ctc_share_vocab: "dump/raw/train_allophant/feature_values.json"
     aux_ctc:
       '0':
           - syl
@@ -95,8 +95,8 @@ patience: none
 init: xavier_uniform
 best_model_criterion:
 -   - valid
-    - acc
-    - max
+    - loss_ctc
+    - min
 -   - valid
     - total_count
     - max

@@ -11,13 +11,11 @@ stage=1       # start from 0 if you need to start from data preparation
 stop_stage=100
 min_wav_duration=0.5
 SECONDS=0
-
 train_data_dir=
 valid_data_dir=
 unseen_test_sets=
-ignore_language_allophones=
+asr_config=
 feature_type=panphon
-
 
 log() {
     local fname=${BASH_SOURCE[1]##*/}
@@ -34,6 +32,7 @@ set -o pipefail
 
 
 log "data preparation started"
+echo $asr_config
 
 if [ -z "${IPAPACK_PLUS}" ]; then
     log "Fill the value of 'IPAPACK_PLUS' of db.sh"
@@ -61,15 +60,19 @@ fi
 
 if [ ${stage} -eq 2 ] && [ ${stop_stage} -ge 2 ]; then
     log "data prep stage 2: Additional data processing - This should only be called after ASR stage 4"
+    train_split=$(basename "${train_data_dir}")
+    dev_split=$(basename "${valid_data_dir}")
+
     # Create files of articulatory features for auxiliary CTC, phoneme inventories and phoneme mappings if the feature_type is set to PHOIBLE
     if [ "${feature_type}" = "panphon" ]; then
         python local/create_artic_feats.py --feature_type "${feature_type}" --data_dir "${train_data_dir}" --write_vocabulary
         python local/create_artic_feats.py --feature_type "${feature_type}" --data_dir "${valid_data_dir}"
-        python local/map_to_phoible.py --skip_mapping --unseen_test_sets "${unseen_test_sets}" --phonepiece_pretokenized
+        python local/map_to_phoible.py --skip_mapping --unseen_test_sets "${unseen_test_sets}" --phonepiece_pretokenized --train_split "${train_split}" --dev_split "${dev_split}"
     else
-        python local/map_to_phoible.py --unseen_test_sets "${unseen_test_sets}" --phonepiece_pretokenized --ignore_language_allophones "${ignore_language_allophones}"
-        python local/create_artic_feats.py --feature_type "${feature_type}" --data_dir "${train_data_dir}_mapped" --write_vocabulary
-        python local/create_artic_feats.py --feature_type "${feature_type}" --data_dir "${valid_data_dir}_mapped"
+        python local/map_to_phoible.py --unseen_test_sets "${unseen_test_sets}" --phonepiece_pretokenized --config "${asr_config}" --train_split "${train_split}" --dev_split "${dev_split}"
+
+        python local/create_artic_feats.py --feature_type "${feature_type}" --data_dir "${train_data_dir}" --write_vocabulary
+        python local/create_artic_feats.py --feature_type "${feature_type}" --data_dir "${valid_data_dir}"
     fi
 fi
 

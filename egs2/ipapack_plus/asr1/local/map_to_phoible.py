@@ -3,6 +3,7 @@ from pathlib import Path
 import shutil
 from typing import Dict, List, Sequence, Optional, Set, Tuple
 from argparse import ArgumentParser
+import langcodes
 import pandas as pd
 import re
 import json
@@ -11,13 +12,13 @@ import re
 import unicodedata
 import itertools
 
-from phonepiece.ipa import read_ipa
 from allophant.phonemes import IpaSegmenter
 from allophant.phonetic_features import PhoneticAttributeIndexer, FeatureSet
 
 # from allophant import phoneme_segmentation
 from allophant import language_codes
 from marisa_trie import Trie
+import yaml
 
 
 class LongestTokenizer:
@@ -57,6 +58,10 @@ def get_iso6393(
     glottomap_codes: Dict[str, str],
     glottomap_closest: Dict[str, str],
 ) -> str | None:
+    # Language code is already valid ISO639-3
+    if len(language_code) == 3 and langcodes.tag_is_valid(language_code):
+        return language_code
+
     match dataset:
         case "doreco":
             language_code = language_code.split("-")[-1]
@@ -111,8 +116,6 @@ def _extract_dataset_vocabulary(
     phoneme_list = phoneme_indexer.full_subset_attributes.phonemes.tolist()
     supported_phonemes = set(phoneme_list)
     shared_tokenizer = IpaSegmenter(phoneme_list) if allow_partial_segmentation else LongestTokenizer(phoneme_list)
-    phonepiece = read_ipa() if phonepiece_pretokenized else None
-    delimiters = re.compile("[ ˈ]")
     inventory = set()
     glottomap_codes = glottomap["code"]
     glottomap_closest = glottomap["closest"]
@@ -156,15 +159,11 @@ def _extract_dataset_vocabulary(
                 if inventory is None:
                     inventories[language] = inventory = set()
 
-            if phonepiece is None:
+            if phonepiece_pretokenized:
+                phonemes = [_tokenize_string(phoneme, shared_tokenizer) for phoneme in transcription.strip().split(" ")]
+            else:
                 # TODO: Temporary workaround for inconsistent diacritic ordering interfering with tokenization
                 phonemes = _tokenize_string(transcription.replace("ːˠ", "ˠː").replace("ːʲ", "ʲː").replace("ʰʷ", "ʷʰ").replace("ʰʲ", "ʲʰ"), shared_tokenizer)
-            else:
-                phonemes = [
-                    _tokenize_string(phoneme, shared_tokenizer)
-                    for word in delimiters.split(transcription)
-                    for phoneme in phonepiece.tokenize(word)
-                ]
 
             for phoneme in phonemes:
                 if isinstance(phoneme, str):
@@ -303,7 +302,6 @@ def _remap_phonemes(
             ]
 
             out_file.write(f"{utt_id} {' '.join(remapped)}\n")
-            # print(len(transcription), len(remapped), transcription, remapped)
 
 
 def collect_and_map_inventories(
@@ -320,6 +318,10 @@ def collect_and_map_inventories(
 ) -> None:
     if ignore_language_allophones is None:
         ignore_language_allophones = set()
+
+    # Assume the base for the train and test splits have the same names without the _mapped suffix
+    train_split = train_split.removesuffix("_mapped")
+    dev_split = dev_split.removesuffix("_mapped")
 
     with open("local/allophoible/allophoible_v2.csv", "r", encoding="utf-8") as file:
         phoneme_indexer = PhoneticAttributeIndexer(
@@ -528,13 +530,9 @@ def main(args: Sequence[str]) -> None:
     )
     parser.add_argument(
         "--unseen_test_sets",
+        nargs="?",
         default="",
         help="Whitespace separated list of directory names of test sets containing only unseen languages for which the inventory should be extracted. Phonemes from this test set will not be remapped or added to the shared inventory for training.",
-    )
-    parser.add_argument(
-        "--ignore_language_allophones",
-        default="",
-        help="Whitespace separated list of languages to ignore during phoneme mapping. Required for all languages without allophone data in PHOIBLE"
     )
     parser.add_argument(
         "--mapping_details",
@@ -553,6 +551,18 @@ def main(args: Sequence[str]) -> None:
         help="Only generates and writes vocabularies from the training data without any phoneme mapping",
     )
 
+    language_allophones_group = parser.add_mutually_exclusive_group()
+    language_allophones_group.add_argument(
+        "--config",
+        type=Path,
+        help="ESPnet config file. Will provide languages for --ignore_language_allophones if that argument is not given"
+    )
+    language_allophones_group.add_argument(
+        "--ignore_language_allophones",
+        default="",
+        help="Whitespace separated list of languages to ignore during phoneme mapping. Required for all languages without allophone data in PHOIBLE"
+    )
+
     arguments = parser.parse_args(args)
 
     if arguments.skip_vocab_generation:
@@ -561,6 +571,14 @@ def main(args: Sequence[str]) -> None:
         skip = "mapping"
     else:
         skip = None
+
+    if arguments.config is not None:
+        # Do not attempt to find allophones for languages for which identity placeholders are specified in the config
+        with arguments.config.open("r", encoding="utf-8") as file:
+            config = yaml.safe_load(file)
+            arguments.ignore_language_allophones = set(config["encoder_conf"]["allophone_identity_placeholders"])
+    else:
+        arguments.ignore_language_allophones = set(arguments.ignore_language_allophones.split())
 
     collect_and_map_inventories(
         arguments.dump_dir,
@@ -571,7 +589,7 @@ def main(args: Sequence[str]) -> None:
         arguments.phonepiece_pretokenized,
         skip,
         arguments.unseen_test_sets.split(),
-        set(arguments.ignore_language_allophones.split()),
+        arguments.ignore_language_allophones,
         arguments.mapping_details,
     )
 

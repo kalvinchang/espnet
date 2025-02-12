@@ -75,6 +75,11 @@ encoder_conf:
       - tgk
       - urd
       - uzb
+      - bak
+      - ina
+      - kmr
+      - tat
+      - uig
     allophone_languages:
       - afr
       - amh
@@ -204,8 +209,8 @@ patience: none
 init: xavier_uniform
 best_model_criterion:
 -   - valid
-    - acc
-    - max
+    - loss_ctc
+    - min
 -   - valid
     - total_count
     - max

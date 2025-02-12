@@ -864,11 +864,6 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ] && ! [[ " ${skip_stages} " =~ [
             "${data_feats}/${dset}"
     done
 
-    if [ -n "${post_process_local_data_opts}" ]; then
-        # Do any additional local data post-processing here
-        local/data.sh ${post_process_local_data_opts} --train_data_dir "${data_feats}/${train_set}" --valid_data_dir "${data_feats}/${valid_set}"
-    fi
-
     # shellcheck disable=SC2002,SC2068,SC2005
     for lm_txt in ${lm_train_text[@]}; do
         suffix=$(echo "$(basename ${lm_txt})" | sed 's/text//')
@@ -1002,6 +997,10 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ] && ! [[ " ${skip_stages} " =~ [
             --add_symbol "${sos_eos}:-1"
     fi
 
+    if [ -n "${post_process_local_data_opts}" ]; then
+        # Do any additional local data post-processing here
+        local/data.sh --asr_config "${asr_config}" --train_data_dir "${data_feats}/${train_set}" --valid_data_dir "${data_feats}/${valid_set}" ${post_process_local_data_opts}
+    fi
 fi
 
 
