@@ -520,9 +520,7 @@ class AllophantLayers(AbsEncoder):
                 dtype=torch.int64,
             )
             # Assume that the allophone layer should not be used when a custom phoneme inventory is provided
-            output = self._allophone_layer(
-                output, language_ids, target_feature_indices is not None
-            )
+            output = self._allophone_layer(output, language_ids)
 
             # Return l2_penalty during training to keep the allophone matrix
             # close to its initialization following Li et al., 2020

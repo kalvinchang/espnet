@@ -69,7 +69,8 @@ class HuggingFaceFrontend(AbsFrontend):
         for kernel_size, stride in zip(config.conv_kernel, config.conv_stride):
             lengths = torch.div(lengths - kernel_size, stride, rounding_mode="floor") + 1
 
-        return lengths
+        # Ensure lengths are >= 0 for very short utterances
+        return torch.maximum(lengths, torch.tensor(0))
 
     def forward(
         self, inputs: torch.Tensor, input_lengths: torch.Tensor
