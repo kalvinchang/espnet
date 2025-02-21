@@ -315,9 +315,13 @@ class ESPnetASRModel(AbsESPnetModel):
 
         # Track multiple losses
         losses = []
+        stats = {}
 
         if isinstance(encoder_out, dict):
-            losses.append(encoder_out["l2_penalty"])
+            if "l2_penalty" in encoder_out:
+                l2_penalty = encoder_out["l2_penalty"]
+                losses.append(l2_penalty)
+                stats["encoder_l2_penalty"] = l2_penalty.detach()
             encoder_out = encoder_out["output"]
 
         if isinstance(encoder_out, tuple):
@@ -331,7 +335,6 @@ class ESPnetASRModel(AbsESPnetModel):
         loss_ctc, cer_ctc = None, None
         loss_transducer, cer_transducer, wer_transducer = None, None, None
         loss_classif, acc_classif = None, None
-        stats = dict()
 
         # 1. CTC branch
         if self.ctc_weight != 0.0:
@@ -595,11 +598,11 @@ class ESPnetASRModel(AbsESPnetModel):
             )
 
         # Apply L2 regularization as an additional loss term
-        if isinstance(encoder_out, dict) and  "l2_penalty" in encoder_out:
-            l2_penalty = encoder_out["l2_penalty"]
+        l2_penalty = None
+        if isinstance(encoder_out, dict):
+            if "l2_penalty" in encoder_out:
+                l2_penalty = encoder_out["l2_penalty"]
             encoder_out = encoder_out["output"]
-        else:
-            l2_penalty = None
 
         intermediate_outs = None
         if isinstance(encoder_out, tuple):
@@ -625,11 +628,15 @@ class ESPnetASRModel(AbsESPnetModel):
                 encoder_out_lens.max(),
             )
 
+        if l2_penalty is not None:
+            if intermediate_outs is None:
+                output = encoder_out
+            else:
+                output = (encoder_out, intermediate_outs)
+            return {"l2_penalty": l2_penalty, "output": output}, encoder_out_lens
+
         if intermediate_outs is not None:
             return (encoder_out, intermediate_outs), encoder_out_lens
-
-        if l2_penalty is not None:
-            encoder_out = {"l2_penalty": l2_penalty, "output": encoder_out}
 
         return encoder_out, encoder_out_lens
 

@@ -21,7 +21,7 @@ encoder_conf:
     use_allophone_layer: true
     phoneme_inventory_file: data/token_list/word/tokens_mapped.txt
     phoible_path: local/allophoible/allophoible_v2.csv
-    composition_inventories_file: dump/raw/inventories.json
+    composition_inventories_file: dump/raw/train_allophant/inventories.json
     composition_features:
       - advancedTongueRoot
       - anterior
@@ -59,7 +59,7 @@ encoder_conf:
       - tense
       - trill
       - long
-    language_id_mapping_path: dump/raw/supported_languages.json
+    language_id_mapping_path: dump/raw/train_allophant/supported_languages.json
     utt_id_separator: "_"
     allophone_identity_placeholders:
       - bel
@@ -85,20 +85,21 @@ encoder_conf:
       - amh
       - ara
       - aze
-      - bul
       - ben
+      - bul
       - cat
       - ceb
-      - cmn
       - ces
+      - cmn
       - dan
       - deu
       - ell
       - eng
-      - spa
       - est
-      - ful
+      - eus
       - fin
+      - fra
+      - ful
       - gle
       - glg
       - hau
@@ -108,33 +109,37 @@ encoder_conf:
       - ind
       - isl
       - ita
-      - jpn
       - jav
+      - jpn
       - kat
-      - kor
+      - kin
       - kir
+      - kor
       - lao
       - lit
-      - mri
       - mkd
-      - mon
-      - msa
       - mlt
+      - mon
+      - mri
+      - msa
       - mya
-      - nob
       - nld
+      - nob
       - pan
       - pol
       - por
       - ron
       - rus
-      - snd
+      - sin
+      - skr
       - slk
       - slv
       - sna
+      - snd
       - som
-      - swe
+      - spa
       - swa
+      - swe
       - tam
       - tel
       - tha
@@ -154,7 +159,7 @@ model_conf:
     interctc_weight: 0.5
     lsm_weight: 0.1
     length_normalized_loss: false
-    aux_ctc_share_vocab: "dump/raw/train_mapped/feature_values.json"
+    aux_ctc_share_vocab: "dump/raw/train_allophant_mapped/feature_values.json"
     aux_ctc:
       '0':
         - advancedTongueRoot

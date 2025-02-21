@@ -99,7 +99,7 @@ class AllophoneMapping(nn.Module):
         return self._index_map
 
     def map_allophones(self, phone_logits: Tensor, language_ids: Tensor) -> Tensor:
-        # Batch size x Shared Phoneme Inventory Size
+        # Batch size x Sequence Length x Shared Phoneme Inventory Size
         batch_matrices = torch.empty(
             *phone_logits.shape[:2],
             self._allophone_matrices.shape[2],
@@ -199,6 +199,10 @@ class EmbeddingCompositionLayer(nn.Module):
 
     def output_size(self) -> int:
         return self._output_size
+
+    @property
+    def additional_special_tokens(self) -> int:
+        return self._additional_special_tokens
 
     def forward(
         self, inputs: Tensor, target_feature_indices: Tensor | None = None
@@ -340,9 +344,9 @@ class AllophantLayers(AbsEncoder):
         # Required if `use_allophone_layer` is `True`
         # TODO: Disable if use_allophone_layer is False to reduce overhead?
         self.requires_utt_id = True
-
         self._separator = re.compile(utt_id_separator)
 
+        # Load mapping from ISO 639-3 language codes to those used in utt_ids in the dataset
         if language_id_mapping_path is None:
             self._language_map = None
             reverse_map = None
@@ -354,6 +358,7 @@ class AllophantLayers(AbsEncoder):
                     for original, normalized in self._language_map.items()
                 }
 
+        # Select phonetic feature set, load features and optionally allophoible inventories
         match feature_type:
             case "phoible":
                 features = FeatureSet.PHOIBLE
@@ -375,6 +380,7 @@ class AllophantLayers(AbsEncoder):
                 allophones_from_allophoible=use_allophone_layer,
             )
 
+        # Generate feature table for each phoneme inventory in the composition_inventories_file
         if composition_inventories_file is not None:
             with open(composition_inventories_file, "r", encoding="utf-8") as file:
                 self._composition_inventories = json.load(file)
@@ -400,6 +406,8 @@ class AllophantLayers(AbsEncoder):
                     " for initializing allophone matrices"
                 )
 
+            # Use an inventory of all allophones for composition and generate an allophone mapping with optional
+            # fallbacks for languages without allophone information in Allophoible
             phone_inventory = self._indexer.allophone_data.shared_phone_indexer.phonemes.tolist()
             language_allophones, composition_inventory = _allophone_mapping_with_fallback(
                 self._indexer,
@@ -463,7 +471,7 @@ class AllophantLayers(AbsEncoder):
             return composition_output
 
         pad_size = self._output_size - composition_output.shape[-1]
-        tail = self._phoneme_composition_layer._additional_special_tokens
+        tail = self._phoneme_composition_layer.additional_special_tokens
         # Pad with the smallest bfloat16 value between the phonemes and special symbol
         return torch.cat((
             composition_output[..., :-tail],
@@ -491,6 +499,7 @@ class AllophantLayers(AbsEncoder):
                 "which is required by the encoder"
             )
 
+        # Project to phone(me) embedding dimension
         output = self._projection_layer(xs_pad)
 
         if use_language_vocabulary and target_feature_indices is None and self._composition_features is not None:
@@ -516,7 +525,7 @@ class AllophantLayers(AbsEncoder):
         # Only use the allophone layer unless another inventory is specified
         if self._allophone_layer is not None and not use_language_vocabulary and target_feature_indices is None:
             language_ids = torch.tensor(
-                [self._allophone_layer.index_map[i] for i in self._utterance_langcodes(utt_id)],
+                [self._allophone_layer.index_map[code] for code in self._utterance_langcodes(utt_id)],
                 dtype=torch.int64,
             )
             # Assume that the allophone layer should not be used when a custom phoneme inventory is provided
